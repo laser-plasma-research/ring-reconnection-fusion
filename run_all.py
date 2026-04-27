@@ -73,8 +73,16 @@ from orchestrator.progress import (
 )
 from orchestrator.shutdown import ShutdownCoordinator
 from orchestrator.thread_pools import DraftingPool
-from orchestrator.deliverable_handlers import StubHandler
+from orchestrator.deliverable_handlers import StubHandler, get_handler
 from orchestrator.visibility import write_gitignore
+
+# Step 4 additions: API integration
+from orchestrator.api.env_loader import load_dotenv
+from orchestrator.api.usage_tracker import UsageTracker, BudgetExceededError
+from orchestrator.api.claude_client import ClaudeClient, ApiError
+from orchestrator.api.crossref_client import CrossrefClient
+from orchestrator.api.openalex_client import OpenAlexClient
+from orchestrator.citation_engine import CitationEngine
 
 
 # ---------------------------------------------------------------------------
@@ -290,12 +298,20 @@ def run_deliverables_stage(
     shutdown: ShutdownCoordinator,
     drafting_pool: DraftingPool,
     paper_repo_root: Path,
+    claude_client=None,
+    citation_engine=None,
+    use_stubs: bool = False,
 ):
     """
     Submit drafting tasks for one paper to the drafting pool.
 
-    Returns immediately after submission; tasks complete asynchronously.
-    Results reflected in display via per-deliverable status updates.
+    Tasks are sequenced in two waves:
+      Wave 1: manuscript (and any independent deliverables like metadata)
+      Wave 2: deliverables that depend on manuscript content
+              (references, lay_summary, press_release, IP analyses, etc.)
+
+    The orchestrator polls for wave 1 completion before submitting wave 2.
+    Tasks within a wave run concurrently up to the drafting pool capacity.
     """
     if not paper.has_deliverables:
         display.add_event(f'{paper.id}: no deliverables configured')
@@ -303,42 +319,98 @@ def run_deliverables_stage(
 
     requested = args.deliverables.split(',') if args.deliverables else None
     runs_root = args.runs_dir or cfg.runs_root
+    attorney_review = paper.requires_attorney_review
 
-    for deliverable_name in paper.deliverable_names:
-        if requested and deliverable_name not in requested:
+    # Classify each deliverable into its wave.
+    # Wave 1 = independent (does not consume manuscript content).
+    # Wave 2 = consumes manuscript content (must run after manuscript completes).
+    WAVE_1_INDEPENDENT = {'manuscript', 'metadata'}
+    # Everything else benefits from having a finished manuscript
+
+    wave_1, wave_2 = [], []
+    for name in paper.deliverable_names:
+        if requested and name not in requested:
             continue
+        if name in WAVE_1_INDEPENDENT:
+            wave_1.append(name)
+        else:
+            wave_2.append(name)
+
+    # Mark all queued
+    for name in wave_1 + wave_2:
+        display.update_deliverable(paper.id, name, STAGE_STATUS_QUEUED)
+
+    # ---- Submit wave 1 ----
+    wave_1_futures = []
+    for name in wave_1:
         if shutdown.should_stop():
             break
-
-        display.update_deliverable(paper.id, deliverable_name, STAGE_STATUS_QUEUED)
-
-        def make_task(p, name):
-            def task():
-                if shutdown.should_stop():
-                    return
-                display.update_deliverable(p.id, name, STAGE_STATUS_RUNNING)
-                display.add_event(f'{p.id}: drafting {name}')
-                try:
-                    handler = StubHandler(
-                        paper=p,
-                        deliverable_name=name,
-                        program_config=cfg,
-                        runs_root=runs_root,
-                        paper_repo_root=paper_repo_root,
-                        preflight=args.preflight,
-                    )
-                    output_path = handler.run()
-                    display.update_deliverable(p.id, name, STAGE_STATUS_DONE)
-                    display.add_event(f'{p.id}: {name} → {output_path.name}')
-                except Exception as e:
-                    display.update_deliverable(p.id, name, STAGE_STATUS_FAILED)
-                    display.add_event(f'{p.id}: {name} FAILED — {e}')
-            return task
-
-        drafting_pool.submit(
-            f'{paper.id}/{deliverable_name}',
-            make_task(paper, deliverable_name),
+        future = _submit_deliverable_task(
+            paper, name, attorney_review, args, cfg, runs_root,
+            paper_repo_root, claude_client, citation_engine, use_stubs,
+            display, shutdown, drafting_pool,
         )
+        wave_1_futures.append((name, future))
+
+    # ---- Wait for wave 1 to complete (with shutdown awareness) ----
+    if wave_2:   # Only wait if we have wave 2 work to do
+        for name, future in wave_1_futures:
+            if shutdown.should_stop():
+                return
+            try:
+                future.result(timeout=300)   # 5-minute cap per deliverable
+            except Exception as e:
+                display.add_event(f'{paper.id}: wave 1 ({name}) error: {e}')
+
+    # ---- Submit wave 2 ----
+    for name in wave_2:
+        if shutdown.should_stop():
+            break
+        _submit_deliverable_task(
+            paper, name, attorney_review, args, cfg, runs_root,
+            paper_repo_root, claude_client, citation_engine, use_stubs,
+            display, shutdown, drafting_pool,
+        )
+
+
+def _submit_deliverable_task(paper, name, attorney_required, args, cfg, runs_root,
+                              paper_repo_root, claude_client, citation_engine,
+                              use_stubs, display, shutdown, drafting_pool):
+    """Build a closure that runs one deliverable and submit to the pool."""
+    def task():
+        if shutdown.should_stop():
+            return
+        display.update_deliverable(paper.id, name, STAGE_STATUS_RUNNING)
+        display.add_event(f'{paper.id}: drafting {name}')
+        try:
+            if use_stubs:
+                HandlerCls = StubHandler
+            else:
+                HandlerCls = get_handler(name)
+
+            handler = HandlerCls(
+                paper=paper,
+                deliverable_name=name,
+                program_config=cfg,
+                runs_root=runs_root,
+                paper_repo_root=paper_repo_root,
+                preflight=args.preflight,
+                claude_client=claude_client,
+                citation_engine=citation_engine,
+                attorney_review_required=attorney_required,
+            )
+            output_path = handler.run()
+            display.update_deliverable(paper.id, name, STAGE_STATUS_DONE)
+            display.add_event(f'{paper.id}: {name} → {output_path.name}')
+        except BudgetExceededError as e:
+            display.update_deliverable(paper.id, name, STAGE_STATUS_FAILED)
+            display.add_event(f'{paper.id}: {name} BUDGET EXCEEDED — {e}')
+        except Exception as e:
+            display.update_deliverable(paper.id, name, STAGE_STATUS_FAILED)
+            display.add_event(f'{paper.id}: {name} FAILED — '
+                               f'{type(e).__name__}: {e}')
+
+    return drafting_pool.submit(f'{paper.id}/{name}', task)
 
 
 # ---------------------------------------------------------------------------
@@ -385,6 +457,10 @@ def main():
                         help='Max concurrent drafting tasks (default: 4)')
     parser.add_argument('--quiet', action='store_true',
                         help='No terminal display (only writes to report file)')
+    parser.add_argument('--use-stubs', action='store_true',
+                        help='Force stub handlers (no API calls; for testing)')
+    parser.add_argument('--env-file', type=str, default=None,
+                        help='Path to .env file (default: shared/.env)')
 
     args = parser.parse_args()
 
@@ -475,7 +551,70 @@ def main():
     shutdown = ShutdownCoordinator(force_exit_after_seconds=15.0)
     shutdown.install_signal_handlers()
 
-    # ---- Set up drafting pool (always created; submitted-to only if stage present) ----
+    # ---- Set up API integration (only if drafting is happening) ----
+    claude_client = None
+    citation_engine = None
+    usage_tracker = None
+
+    needs_api = ('deliverables' in requested_stages and not args.use_stubs
+                 and not args.dry_run)
+    if needs_api:
+        # Load .env
+        env_path = Path(args.env_file) if args.env_file else (cfg.shared_dir / '.env')
+        if env_path.exists():
+            try:
+                load_dotenv(env_path, required_keys=['ANTHROPIC_API_KEY'])
+                display.add_event(f'Loaded .env from {env_path}')
+            except (FileNotFoundError, KeyError) as e:
+                print(f"\nERROR loading .env: {e}", file=sys.stderr)
+                print(f"  Either populate {env_path} with ANTHROPIC_API_KEY=...,", file=sys.stderr)
+                print(f"  or use --use-stubs to skip API calls.\n", file=sys.stderr)
+                sys.exit(1)
+        else:
+            print(f"\nERROR: .env file not found at {env_path}", file=sys.stderr)
+            print(f"  Use --use-stubs to skip API calls, or", file=sys.stderr)
+            print(f"  create {env_path} with: ANTHROPIC_API_KEY=sk-ant-...\n", file=sys.stderr)
+            sys.exit(1)
+
+        # Set up usage tracker with budget caps
+        budget_cfg = cfg.drafting.get('budget', {})
+        usage_log_path = cfg.shared_dir / 'usage_log.json'
+        usage_tracker = UsageTracker(budget=budget_cfg, log_path=str(usage_log_path))
+
+        # Set up Claude client
+        try:
+            claude_client = ClaudeClient(
+                usage_tracker=usage_tracker,
+                default_model=cfg.default_model,
+            )
+        except ApiError as e:
+            print(f"\nERROR: Cannot initialize Claude client: {e}", file=sys.stderr)
+            sys.exit(1)
+
+        # Set up citation engine
+        contact_email = cfg.program.get('contact_email', 'no-contact@example.com')
+        crossref_client = CrossrefClient(contact_email=contact_email)
+        openalex_client = OpenAlexClient(contact_email=contact_email)
+        citation_engine = CitationEngine(
+            openalex_client=openalex_client,
+            crossref_client=crossref_client,
+        )
+
+        # Show initial budget state
+        summary = usage_tracker.summary()
+        display.set_api_usage(
+            calls=summary['this_run']['calls'],
+            spent_usd=summary['this_run']['cost_usd'],
+            budget_usd=summary['this_run']['cap_usd'],
+        )
+        display.add_event(
+            f"API ready. Today: ${summary['today']['cost_usd']:.2f}/"
+            f"${summary['today']['cap_usd']:.2f}, "
+            f"Month: ${summary['this_month']['cost_usd']:.2f}/"
+            f"${summary['this_month']['cap_usd']:.2f}"
+        )
+
+    # ---- Set up drafting pool ----
     drafting_pool = DraftingPool(
         max_workers=args.draft_parallel,
         on_task_start=lambda n: display.set_pool_usage(
@@ -515,6 +654,9 @@ def main():
             shutdown=shutdown,
             drafting_pool=drafting_pool,
             paper_repo_root=paper_repo_root,
+            claude_client=claude_client,
+            citation_engine=citation_engine,
+            use_stubs=args.use_stubs or args.dry_run,
         )
 
     # ---- Start display ----
@@ -547,9 +689,21 @@ def main():
         # Wait for drafting tasks to complete (with shutdown awareness)
         if 'deliverables' in requested_stages and not shutdown.should_stop():
             display.add_event('Waiting for deliverables to complete...')
-            # Poll the pool periodically
             while drafting_pool.in_flight > 0 and not shutdown.should_stop():
                 time.sleep(2.0)
+                # Update usage display
+                if usage_tracker:
+                    summary = usage_tracker.summary()
+                    display.set_api_usage(
+                        calls=summary['this_run']['calls'],
+                        spent_usd=summary['this_run']['cost_usd'],
+                        budget_usd=summary['this_run']['cap_usd'],
+                    )
+                    # Warn if budget threshold crossed
+                    warn_scope = usage_tracker.warning_threshold_reached()
+                    if warn_scope:
+                        display.add_event(
+                            f'WARN: API budget at warning threshold ({warn_scope})')
 
         # ---- Final summary ----
         display.add_event('All stages complete')
@@ -585,6 +739,15 @@ def main():
               f'(of {len(selected)})')
         if n_draft_total:
             print(f'  Drafting:   {n_draft_done}/{n_draft_total} deliverables')
+        if usage_tracker:
+            summary = usage_tracker.summary()
+            print(f'  API usage:')
+            print(f'    This run:  ${summary["this_run"]["cost_usd"]:.4f} '
+                  f'({summary["this_run"]["calls"]} calls)')
+            print(f'    Today:     ${summary["today"]["cost_usd"]:.4f} / '
+                  f'${summary["today"]["cap_usd"]:.2f} budget')
+            print(f'    Month:     ${summary["this_month"]["cost_usd"]:.4f} / '
+                  f'${summary["this_month"]["cap_usd"]:.2f} budget')
         print(f'  Report:     {report_path}')
         print('=' * 70)
 

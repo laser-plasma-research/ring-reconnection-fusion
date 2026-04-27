@@ -20,6 +20,7 @@
 program:
   name: "Ring-Reconnection Plasma Research"
   org: "laser-plasma-research"
+  contact_email: "bworth@substrate.ai"  # for OpenAlex/Crossref polite-pool routing
   default_max_parallel: 2
   default_mpi_ranks: 8
   
@@ -90,6 +91,18 @@ program:
       model: "claude-sonnet-4-6"
       length_factor: 0.1   # produces 10% of normal length
       skip_citation_verification: true
+
+    # ── Budget caps (Step 4) ─────────────────────────────────────────────
+    # Hard limits on Claude API spend. The orchestrator refuses calls that
+    # would exceed any cap. Daily and monthly totals persist across runs in
+    # shared/usage_log.json (gitignored).
+    budget:
+      per_run_usd: 5.0          # one paper full drafting
+      per_day_usd: 10.0         # catches accidental loops
+      per_month_usd: 50.0       # absolute monthly cap
+      hard_stop_at_pct: 100     # halt when threshold reached
+      warn_at_pct: 70           # display warning above this percent
+
   
   # ---- Citation strategy global defaults ----
   # Per-paper citation_strategy block can override these.
@@ -1098,6 +1111,8 @@ papers:
         - "Vay, J.-L."         # WarpX framework
         - "Drake, J."          # reconnection physics
         - "Birn, J."           # GEM challenge reconnection
+        - "Rider, T."           # bremsstrahlung-limit thermodynamic argument (1995, 1997)
+        - "Nevins, W."           # bremsstrahlung extension; advanced fuels (1998)
       preferred_journals:
         - "Physics of Plasmas"
         - "Nature Communications"

@@ -172,7 +172,14 @@ class ProgramConfig:
     @property
     def shared_dir(self) -> Path:
         s = self.program.get('paths', {}).get('shared', './shared')
-        return Path(s).expanduser()
+        path = Path(s).expanduser()
+        # If the configured absolute path doesn't exist but ./shared does,
+        # prefer the local ./shared (handles repo migration scenarios)
+        if not path.exists():
+            local = Path('./shared').resolve()
+            if local.exists():
+                return local
+        return path
 
     @property
     def program_root(self) -> Path:

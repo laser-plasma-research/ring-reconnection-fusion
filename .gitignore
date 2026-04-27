@@ -33,3 +33,8 @@ deliverables_preflight/
 # IDE
 .vscode/
 .idea/
+
+# Local-only directories (never commit contents)
+papers/
+shared/usage_log.json
+shared/cache/

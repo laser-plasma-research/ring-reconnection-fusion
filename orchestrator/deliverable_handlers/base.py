@@ -1,23 +1,17 @@
 """
-base.py — Base class for deliverable handlers.
+base.py — Base class for deliverable handlers (Step 4).
 
-Each deliverable type (manuscript, press_release, vc_briefing, etc.) is
-implemented as a subclass of DeliverableHandler. The base class defines
-the contract:
-
-  - resolve_output_path(paper, deliverable_type) -> Path
-  - render_prompt(paper, type_def, context) -> dict   # {system, user}
-  - call_api(prompt) -> str                            # actual Claude call
-  - validate_output(text, type_def) -> bool            # forbidden/required check
-  - write_output(text, path)                           # writes file
-
-In Step 3 we ship a StubHandler that fakes the API call (writes
-placeholder content) so the orchestrator can be tested end-to-end
-without burning API credits. Step 4 replaces the stub with real
-handlers per deliverable type.
+Provides:
+  - DeliverableHandler: Abstract base with API integration
+  - StubHandler: Step 3 fallback that writes placeholder content
+  - Lifecycle: render_prompt -> call_api -> validate -> write
+  - Retry on validation failures (up to 3 attempts)
+  - Budget enforcement via UsageTracker
+  - Content validation via ContentValidator
 """
 
 import os
+from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
@@ -38,30 +32,36 @@ class ContentValidationError(DeliverableError):
 
 class DeliverableHandler:
     """
-    Abstract base. Subclasses implement specific deliverable types.
+    Abstract base for deliverable handlers.
 
-    A handler is created per (paper, deliverable_type) pairing and
-    invoked once via run().
+    Subclasses override:
+      - get_prompt() to build the {system, user} prompt
+      - get_max_tokens() to control output length
+      - get_temperature() for creativity vs determinism
+      - validate_output() if extra checks beyond default validator
+
+    The default run() drives the whole pipeline.
     """
+
+    DEFAULT_MAX_TOKENS = 4096
+    DEFAULT_TEMPERATURE = 1.0
+    MAX_VALIDATION_RETRIES = 2   # attempts after first; total = 3 calls max
 
     def __init__(self, paper, deliverable_name: str,
                  program_config, runs_root,
                  paper_repo_root: Optional[Path] = None,
-                 preflight: bool = False):
-        """
-        paper: PaperConfig
-        deliverable_name: e.g. 'manuscript'
-        program_config: ProgramConfig
-        runs_root: where simulation outputs live
-        paper_repo_root: where deliverable outputs are written; defaults to
-                         {program_root}/papers/{repo_name}/
-        preflight: if True, use cheap model and short outputs
-        """
+                 preflight: bool = False,
+                 claude_client=None,
+                 citation_engine=None,
+                 attorney_review_required: bool = False):
         self.paper = paper
         self.name = deliverable_name
         self.config = program_config
         self.runs_root = Path(runs_root)
         self.preflight = preflight
+        self.claude_client = claude_client
+        self.citation_engine = citation_engine
+        self.attorney_review_required = attorney_review_required
 
         # Look up the deliverable type definition
         self.type_def = program_config.get_deliverable_type(deliverable_name)
@@ -83,26 +83,32 @@ class DeliverableHandler:
     def run(self) -> Path:
         """
         Execute the deliverable end-to-end. Returns the output path.
-
-        Subclasses typically don't override this — they override the
-        render_prompt(), call_api(), and validate_output() methods.
         """
-        # Resolve the output path
         output_path = self.resolve_output_path()
+        prompt = self.get_prompt()
 
-        # Build the prompt
-        prompt = self.render_prompt()
+        # Try up to MAX_VALIDATION_RETRIES + 1 times
+        last_error = None
+        for attempt in range(self.MAX_VALIDATION_RETRIES + 1):
+            text = self.call_api(prompt, attempt=attempt)
 
-        # Call API (or stub)
-        text = self.call_api(prompt)
+            try:
+                self.validate_output(text)
+                # Validation passed — write and return
+                if self.attorney_review_required:
+                    text = self._inject_attorney_review_warning(text)
+                self.write_output(text, output_path)
+                return output_path
+            except ContentValidationError as e:
+                last_error = e
+                # Augment prompt with violations for retry
+                prompt = self._build_retry_prompt(prompt, e)
 
-        # Validate forbidden/required content
-        self.validate_output(text)
-
-        # Write output
-        self.write_output(text, output_path)
-
-        return output_path
+        # Exhausted retries
+        raise ContentValidationError(
+            f"Content validation failed after {self.MAX_VALIDATION_RETRIES + 1} "
+            f"attempts for {self.paper.id}/{self.name}: {last_error}"
+        )
 
     # ---- Path resolution ----
 
@@ -113,55 +119,57 @@ class DeliverableHandler:
             raise DeliverableError(
                 f"Deliverable {self.name!r} has no output_path defined")
 
-        # Substitute common placeholders
         substitutions = {
             'paper_id': self.paper.id,
             'tag': self.paper.tag,
             'language': self.paper.drafting_context.get('default_language', 'en'),
+            'event': (self.paper.drafting_context.get('target_event', 'unspecified')
+                      .replace(' ', '_')),
         }
-
-        # Some deliverables use {event} for conference-specific abstracts
-        substitutions['event'] = self.paper.drafting_context.get(
-            'target_event', 'unspecified').replace(' ', '_')
 
         try:
             relative = template.format(**substitutions)
         except KeyError as e:
             raise DeliverableError(
-                f"Output path template {template!r} contains unknown "
-                f"placeholder: {e}. Available: {list(substitutions.keys())}"
+                f"Output path template {template!r} uses unknown placeholder: {e}"
             )
 
         return self.paper_repo_root / relative
 
-    # ---- Prompt rendering (subclasses override or extend) ----
+    # ---- Prompt construction ----
 
-    def render_prompt(self) -> dict:
+    def get_prompt(self) -> dict:
         """
         Build {system, user} prompt from type_def + paper context.
-
-        Subclasses can override this for special handling. Default impl
-        substitutes paper context into the prompt templates from
-        program_config.yaml.
+        Subclasses can override for special handling.
         """
         prompt_def = self.type_def.get('prompt', {})
         system = prompt_def.get('system', '')
         user_template = prompt_def.get('user_template', '')
 
+        # Adjust system for preflight
+        if self.preflight:
+            preflight_note = (
+                "\n\n[PREFLIGHT MODE: produce a short skeleton (~10% normal length) "
+                "to validate the pipeline. Mark output as PREFLIGHT.]"
+            )
+            system = system + preflight_note
+
         substitutions = self._collect_substitutions()
-        try:
-            user = self._safe_format(user_template, substitutions)
-        except KeyError as e:
-            raise DeliverableError(
-                f"Prompt template for {self.name} references unknown "
-                f"variable: {e}"
+        user = self._safe_format(user_template, substitutions)
+
+        # Add attorney review warning to user prompt if applicable
+        if self.attorney_review_required:
+            user += (
+                "\n\nIMPORTANT: This paper introduces matter beyond the v4 PPA. "
+                "Output is for internal review only and MUST be marked as such. "
+                "Begin with: 'CONFIDENTIAL — REQUIRES ATTORNEY REVIEW BEFORE PUBLIC RELEASE'."
             )
 
         return {'system': system, 'user': user}
 
     def _collect_substitutions(self) -> dict:
         """Build a dict of variables for prompt template substitution."""
-        # Make a flat dict that handles dotted access via _safe_format
         return {
             'title': self.paper.title,
             'tag': self.paper.tag,
@@ -170,12 +178,11 @@ class DeliverableHandler:
             'language': self.paper.drafting_context.get('default_language', 'en'),
             'drafting_context': self.paper.drafting_context,
             'citation_strategy': self.paper.citation_strategy,
-            'internal_patent_strategy': self.paper.internal_patent_strategy,
-            'analysis_outputs': '<analysis_outputs not yet wired in Step 3>',
-            'figures_with_captions': '<figures not yet wired in Step 3>',
-            'manuscript_text': '<manuscript_text not yet wired in Step 3>',
-            'verified_candidates': '<citation candidates not yet wired in Step 3>',
-            'v4_ppa_excerpt': '<PPA excerpt not yet wired in Step 3>',
+            'analysis_outputs': self._load_analysis_outputs(),
+            'figures_with_captions': self._figures_summary(),
+            'manuscript_text': self._load_existing('paper/manuscript.tex'),
+            'verified_candidates': '<populated by ReferencesHandler>',
+            'v4_ppa_excerpt': '<v4 PPA excerpt — see internal patent files>',
             'authors': self.paper.drafting_context.get('authors', 'Worth, J. B.'),
             'orcid': self.paper.drafting_context.get('orcid', '0009-0005-5000-9497'),
             'abstract': self.paper.drafting_context.get('abstract', ''),
@@ -184,13 +191,56 @@ class DeliverableHandler:
                 'latex_class', 'article'),
         }
 
+    def _load_analysis_outputs(self) -> str:
+        """Load relevant analysis outputs for this paper from runs/."""
+        # Look for paper-specific analysis files
+        paper_runs_dir = self.runs_root / f'paper{self.paper.paper_num:02d}' \
+            if self.paper.paper_num else None
+
+        if not paper_runs_dir or not paper_runs_dir.exists():
+            return f"<no analysis outputs found at {paper_runs_dir}>"
+
+        chunks = []
+        # Look for key text/csv files
+        for pattern in ['*.txt', '*_summary.csv', '*_results.csv']:
+            for f in sorted(paper_runs_dir.glob(pattern))[:5]:
+                try:
+                    content = f.read_text(errors='replace')
+                    chunks.append(f"\n--- {f.name} ---\n{content[:2000]}")
+                except Exception:
+                    pass
+
+        if not chunks:
+            return f"<paper{self.paper.paper_num:02d}/ exists but no readable analysis files>"
+        return '\n'.join(chunks[:8000])   # cap total length
+
+    def _figures_summary(self) -> str:
+        """Summarize figures expected for this paper."""
+        figs = self.paper.raw.get('figures', [])
+        if not figs:
+            return "<no figures specified for this paper>"
+        lines = []
+        for f in figs:
+            if isinstance(f, str):
+                fig_def = self.config.get_figure_type(f)
+                lines.append(f"- {f}: {fig_def.get('description', '(no description)')}")
+            elif isinstance(f, dict):
+                lines.append(f"- {f.get('type')}: {f.get('caption', '(no caption)')}")
+        return '\n'.join(lines)
+
+    def _load_existing(self, relative_path: str) -> str:
+        """Try to load an existing file (e.g. manuscript.tex for follow-on deliverables)."""
+        path = self.paper_repo_root / relative_path
+        if path.exists():
+            try:
+                return path.read_text(errors='replace')[:30000]
+            except Exception:
+                pass
+        return f"<file {relative_path} not yet generated>"
+
     @staticmethod
     def _safe_format(template: str, mapping: dict) -> str:
-        """
-        Format with dotted paths e.g. {drafting_context.framing.problem}.
-
-        Handles missing keys by substituting <missing: key> rather than raising.
-        """
+        """Format with dotted paths e.g. {drafting_context.framing.problem}."""
         import string
 
         def resolve(name):
@@ -207,7 +257,6 @@ class DeliverableHandler:
                 return '\n'.join(f'  - {v}' for v in value)
             return str(value)
 
-        # Use string.Formatter to walk the template
         out = []
         for literal, field_name, _, _ in string.Formatter().parse(template):
             out.append(literal)
@@ -215,92 +264,78 @@ class DeliverableHandler:
                 out.append(resolve(field_name))
         return ''.join(out)
 
-    # ---- API call (subclass overrides for real impl) ----
+    # ---- API call ----
 
-    def call_api(self, prompt: dict) -> str:
-        """
-        Call the AI API with the given prompt. Returns text.
+    def get_max_tokens(self) -> int:
+        if self.preflight:
+            return int(self.DEFAULT_MAX_TOKENS *
+                      self.config.preflight.get('length_factor', 0.1))
+        return self.DEFAULT_MAX_TOKENS
 
-        Base implementation raises NotImplementedError. The StubHandler
-        overrides this to write placeholder text. Step 4 introduces a
-        real handler that calls Claude via anthropic SDK.
+    def get_temperature(self) -> float:
+        return self.DEFAULT_TEMPERATURE
+
+    def get_model(self) -> str:
+        if self.preflight:
+            return self.config.preflight.get(
+                'model', 'claude-haiku-4-5-20251001')
+        return self.config.default_model
+
+    def call_api(self, prompt: dict, attempt: int = 0) -> str:
         """
-        raise NotImplementedError(
-            f"{self.__class__.__name__} does not implement call_api(). "
-            f"Use StubHandler in Step 3 or wait for Step 4 handlers."
+        Make the API call. Subclasses can override for special pre/post processing.
+        """
+        if self.claude_client is None:
+            raise DeliverableError(
+                f"No claude_client available; can't call API for {self.name}. "
+                f"Use StubHandler instead, or pass --paper without --preflight "
+                f"to disable AI calls."
+            )
+
+        result = self.claude_client.complete(
+            system=prompt['system'],
+            user=prompt['user'],
+            model=self.get_model(),
+            max_tokens=self.get_max_tokens(),
+            temperature=self.get_temperature(),
+            deliverable=self.name,
+            paper_id=self.paper.id,
         )
+        return result['text']
 
-    # ---- Output validation ----
+    # ---- Validation ----
 
     def validate_output(self, text: str) -> None:
         """
-        Check forbidden_content and required_content rules.
-
-        Forbidden patterns are case-insensitive substring checks against
-        the content. Required patterns are absence-checked similarly.
-
-        Raises ContentValidationError on violation.
+        Apply forbidden_content / required_content rules.
+        Raises ContentValidationError on violations.
         """
+        from orchestrator.content_validator import ContentValidator, ContentValidationError as CVE
+
         prompt_def = self.type_def.get('prompt', {})
         forbidden = prompt_def.get('forbidden_content', [])
         required = prompt_def.get('required_content', [])
 
-        text_lower = text.lower()
-        violations = []
+        validator = ContentValidator(self.name, self.paper.id)
+        try:
+            validator.validate(text, forbidden, required, strict=True)
+        except CVE as e:
+            # Re-raise as our local ContentValidationError
+            raise ContentValidationError(str(e))
 
-        # Forbidden checks: simple substring matching for now (Step 4 may
-        # add more sophisticated regex/semantic checks).
-        # NOTE: forbidden_content lists are descriptive guidelines, not
-        # literal strings to match. We do a heuristic check on a small
-        # set of high-confidence patterns. Step 4 will refine this.
-        HEURISTIC_FORBIDDEN_PATTERNS = {
-            'patent claim numbers': [
-                r'claim\s+\d+',  # "Claim 33"
-                r'claim\s+number\s+\d+',
-            ],
-            'gain lever references': [
-                r'lever\s+\d+',  # "Lever 4"
-                r'gain stack',
-            ],
+    def _build_retry_prompt(self, prompt: dict, validation_error) -> dict:
+        """Augment prompt with validation feedback for retry."""
+        addendum = (
+            f"\n\nIMPORTANT — your previous attempt failed validation: "
+            f"{validation_error}. "
+            f"Please regenerate avoiding these violations."
+        )
+        return {
+            'system': prompt['system'],
+            'user': prompt['user'] + addendum,
         }
 
-        # Apply heuristic checks for items where we have specific patterns
-        import re
-        for desc in forbidden:
-            desc_lower = desc.lower()
-            for pattern_key, regexes in HEURISTIC_FORBIDDEN_PATTERNS.items():
-                if pattern_key in desc_lower:
-                    for rgx in regexes:
-                        if re.search(rgx, text, re.IGNORECASE):
-                            violations.append(
-                                f"forbidden pattern matched ({pattern_key}): "
-                                f"regex {rgx!r}")
-
-        # Required content: heuristic check only, log warnings rather
-        # than fail. Step 4 will refine.
-        warnings = []
-        for desc in required:
-            # Light heuristic for sections that should appear
-            desc_lower = desc.lower()
-            if 'abstract' in desc_lower and 'abstract' not in text_lower:
-                warnings.append(f"required section 'abstract' not detected")
-            if 'data availability' in desc_lower and 'data availability' not in text_lower:
-                warnings.append(f"required section 'data availability' not detected")
-
-        if violations:
-            raise ContentValidationError(
-                f"Output for {self.name} ({self.paper.id}) violated "
-                f"forbidden_content rules:\n  " + "\n  ".join(violations)
-            )
-
-        # Warnings printed for visibility but don't fail
-        if warnings:
-            import sys
-            for w in warnings:
-                print(f"  WARN: {self.paper.id}/{self.name}: {w}",
-                      file=sys.stderr)
-
-    # ---- File writing ----
+    # ---- Output writing ----
 
     def write_output(self, text: str, path: Path):
         """Write the deliverable text to disk, creating dirs as needed."""
@@ -308,27 +343,43 @@ class DeliverableHandler:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(text)
 
+    def _inject_attorney_review_warning(self, text: str) -> str:
+        """Prepend an attorney review warning header."""
+        format_type = self.type_def.get('format', 'markdown')
+        if format_type == 'latex':
+            warning = ('% =====================================================\n'
+                       '% CONFIDENTIAL — REQUIRES ATTORNEY REVIEW\n'
+                       '% This deliverable contains matter beyond the v4 PPA.\n'
+                       '% DO NOT distribute, publish, or share publicly.\n'
+                       '% =====================================================\n\n')
+        elif format_type == 'json':
+            # Don't modify JSON; warning would break it
+            return text
+        else:
+            warning = ('---\n'
+                       '**CONFIDENTIAL — REQUIRES ATTORNEY REVIEW**\n\n'
+                       'This deliverable contains matter beyond the v4 PPA. '
+                       'DO NOT distribute, publish, or share publicly until reviewed.\n'
+                       '---\n\n')
+        return warning + text
+
 
 # ---------------------------------------------------------------------------
-# StubHandler — used in Step 3 testing without API calls
+# StubHandler — fallback when no real handler implemented
 # ---------------------------------------------------------------------------
 
 class StubHandler(DeliverableHandler):
     """
     Mock handler that writes placeholder text instead of calling the API.
-
-    Used in Step 3 to verify the orchestrator pipeline end-to-end without
-    burning API credits. Each output explicitly marks itself as a stub.
+    Used as fallback when a real handler isn't available, and for tests
+    that should not consume API credits.
     """
 
-    def call_api(self, prompt: dict) -> str:
+    def call_api(self, prompt: dict, attempt: int = 0) -> str:
         """Generate placeholder content describing what would be drafted."""
-        from datetime import datetime
-
         visibility = self.type_def.get('visibility', 'public')
         format_type = self.type_def.get('format', 'markdown')
 
-        # Generate format-appropriate placeholder
         if format_type == 'latex':
             return self._latex_stub(prompt, visibility)
         elif format_type == 'bibtex':
@@ -338,30 +389,19 @@ class StubHandler(DeliverableHandler):
         else:
             return self._markdown_stub(prompt, visibility)
 
+    def validate_output(self, text: str) -> None:
+        """Skip validation for stub content."""
+        pass
+
     def _markdown_stub(self, prompt: dict, visibility: str) -> str:
-        from datetime import datetime
         return f"""# {self.name.upper()} — STUB
 
 **Paper:** {self.paper.id} — {self.paper.title}
 **Visibility:** {visibility}
 **Generated:** {datetime.now().isoformat(timespec='seconds')}
-**Model:** (stub — no API call)
-**Preflight:** {self.preflight}
 
-This is a placeholder generated by the orchestrator's StubHandler in Step 3.
-Step 4 will replace this with a real Claude API call producing genuine content.
-
----
-
-## Prompt that would have been sent
-
-### System
-
-{prompt.get('system', '(no system prompt)')[:500]}{'...' if len(prompt.get('system', '')) > 500 else ''}
-
-### User
-
-{prompt.get('user', '(no user prompt)')[:1500]}{'...' if len(prompt.get('user', '')) > 1500 else ''}
+This is a placeholder generated by StubHandler. Replace with real handler
+in production.
 
 ---
 
@@ -369,13 +409,8 @@ Step 4 will replace this with a real Claude API call producing genuine content.
 """
 
     def _latex_stub(self, prompt: dict, visibility: str) -> str:
-        from datetime import datetime
         return f"""% STUB — {self.name} for {self.paper.id}
 % Generated: {datetime.now().isoformat(timespec='seconds')}
-% Visibility: {visibility}
-%
-% This is a placeholder LaTeX file from the StubHandler.
-% Step 4 will replace this with a real Claude-drafted manuscript.
 
 \\documentclass{{article}}
 \\title{{{self.paper.title} (STUB)}}
@@ -384,57 +419,34 @@ Step 4 will replace this with a real Claude API call producing genuine content.
 \\maketitle
 
 \\begin{{abstract}}
-This is a stub. Step 4 will produce real content.
+This is a stub generated by StubHandler.
 \\end{{abstract}}
 
 \\section{{Introduction}}
-Stub content for {self.paper.id}.
-
-\\section{{Method}}
-Stub content for {self.paper.id}.
-
-\\section{{Results}}
-Stub content for {self.paper.id}.
-
-\\section{{Discussion}}
-Stub content for {self.paper.id}.
-
-\\section{{Conclusions}}
 Stub content for {self.paper.id}.
 
 \\end{{document}}
 """
 
     def _bibtex_stub(self, prompt: dict, visibility: str) -> str:
-        from datetime import datetime
         return f"""% STUB references for {self.paper.id}
-% Generated: {datetime.now().isoformat(timespec='seconds')}
-% Step 4 will replace this with a real verified bibliography.
-
-@article{{stub_reference,
+@misc{{stub_reference,
   author = {{Stub Author}},
-  title = {{Placeholder Reference for {self.paper.id}}},
-  journal = {{Stub Journal}},
+  title = {{Placeholder for {self.paper.id}}},
   year = {{2026}},
-  note = {{Generated by StubHandler — replace in Step 4}}
+  note = {{Generated by StubHandler}}
 }}
 """
 
     def _json_stub(self, prompt: dict, visibility: str) -> str:
         import json
-        from datetime import datetime
         return json.dumps({
             "@context": "https://schema.org",
             "@type": "ScholarlyArticle",
             "name": self.paper.title,
             "_stub": True,
             "_generated": datetime.now().isoformat(timespec='seconds'),
-            "_note": "Stub content. Step 4 will populate with real metadata.",
         }, indent=2)
-
-    def validate_output(self, text: str) -> None:
-        """Skip validation for stub content (it's intentionally generic)."""
-        pass
 
 
 # ---------------------------------------------------------------------------
@@ -444,4 +456,4 @@ Stub content for {self.paper.id}.
 if __name__ == '__main__':
     print("base.py module loaded successfully")
     print(f"  Classes: DeliverableHandler, StubHandler")
-    print(f"  Errors:  DeliverableError, ContentValidationError")
+    print(f"  Errors: DeliverableError, ContentValidationError")
