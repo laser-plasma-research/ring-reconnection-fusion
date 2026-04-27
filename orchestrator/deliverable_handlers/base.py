@@ -45,7 +45,7 @@ class DeliverableHandler:
 
     DEFAULT_MAX_TOKENS = 4096
     DEFAULT_TEMPERATURE = 1.0
-    MAX_VALIDATION_RETRIES = 2   # attempts after first; total = 3 calls max
+    MAX_VALIDATION_RETRIES = 1   # attempts after first; total = 2 calls max
 
     def __init__(self, paper, deliverable_name: str,
                  program_config, runs_root,

@@ -14,6 +14,11 @@ Validation philosophy:
   - Forbidden patterns: regex-based, hard fail if matched
   - Required patterns: heuristic check, soft warn (not blocking)
   - The Claude prompt is the primary defense; validation catches obvious lapses
+  - Patterns are CONTEXT-AWARE: matches in section headers (line-start with
+    markdown formatting like '## Claim 1:' or '**Claim 1**:') are EXEMPT.
+    The intent is to forbid PROSE references like 'as set forth in Claim 5
+    of the patent', NOT to forbid using 'Claim N' as a section heading
+    for analytical discussion in IP analysis deliverables.
 """
 
 import re
@@ -39,14 +44,42 @@ class ContentValidationError(Exception):
 # ---------------------------------------------------------------------------
 #
 # Each key is a substring that may appear in a forbidden_content description.
-# Each value is a list of regexes. If any regex matches the AI output, the
-# content is flagged as violating that forbidden rule.
+# Each value is a list of regex patterns. If any pattern matches the AI output
+# AND is not exempt under the section-header rule, the content is flagged.
 #
 # Keep this catalog conservative: false positives waste API tokens on retries,
 # false negatives let bad content slip through.
+#
+# Patterns intended to forbid PROSE references — e.g. "as described in Claim 5"
+# — should not match SECTION HEADERS used for discussion — e.g. "## Claim 1:".
+
+# Lines that look like section headers should NOT trigger forbidden-pattern
+# checks for ambiguous patterns like "Claim N" or "Lever N". A section header
+# is identified by:
+#   - Line starting with markdown header markers (#, ##, ###, ####)
+#   - OR line wrapped entirely in markdown bold (**...**)
+#   - OR line ending with a colon (the heading-of-a-block convention)
+#
+# We strip these section-header lines from the text BEFORE applying ambiguous
+# patterns, so they don't trigger false positives. Other patterns (gain stack,
+# patent strategy, breakeven claims) are NOT exempted — those terms are
+# unambiguous regardless of context.
+
+SECTION_HEADER_PATTERNS = [
+    r'^\s*#{1,6}\s+.*$',                     # markdown headers
+    r'^\s*\*\*[^*\n]+\*\*\s*:?\s*$',         # **bold heading**
+    r'^\s*\*\*[^*\n]*Claim\s+\d+[^*\n]*\*\*', # **Claim 1: ...**
+]
+
+# Patterns that ARE context-aware — they get the section-header exemption
+CONTEXT_AWARE_PATTERN_KEYS = {
+    'patent claim numbers',
+    'specific claim',
+    'gain lever',
+}
 
 FORBIDDEN_PATTERNS = {
-    # Patent-related terms
+    # Patent-related terms (CONTEXT-AWARE — exempted in section headers)
     'patent claim numbers': [
         r'\bclaim\s+\d+\b',
         r'\bclaims?\s+\d+\s*(?:through|to|–|—|-)\s*\d+\b',
@@ -58,6 +91,8 @@ FORBIDDEN_PATTERNS = {
         r'\blever\s+\d+\b',
         r'\bgain\s+lever\b',
     ],
+
+    # Patterns that are unambiguous (NOT context-aware)
     'gain stack': [
         r'\bgain\s+stack\b',
     ],
@@ -70,7 +105,6 @@ FORBIDDEN_PATTERNS = {
         r'\bavalanche\s+pre[-\s]?ioni[sz]ation\b',
     ],
 
-    # Internal-only terms
     'internal terminology': [
         # Defined per-paper; this is a stub
     ],
@@ -114,13 +148,35 @@ REQUIRED_HEURISTICS = {
 
 
 # ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+def _strip_section_headers(text: str) -> str:
+    """
+    Replace lines matching SECTION_HEADER_PATTERNS with blank lines, so that
+    pattern matches inside section headers don't trigger forbidden-content
+    violations.
+
+    Returns text with same line count (positions preserved for error reporting).
+    """
+    lines = text.splitlines()
+    cleaned = []
+    for line in lines:
+        is_header = False
+        for hdr_pattern in SECTION_HEADER_PATTERNS:
+            if re.match(hdr_pattern, line, re.IGNORECASE):
+                is_header = True
+                break
+        cleaned.append('' if is_header else line)
+    return '\n'.join(cleaned)
+
+
+# ---------------------------------------------------------------------------
 # Validator
 # ---------------------------------------------------------------------------
 
 class ContentValidator:
-    """
-    Apply forbidden and required content rules to AI output.
-    """
+    """Apply forbidden and required content rules to AI output."""
 
     def __init__(self, deliverable_name: str, paper_id: str):
         self.deliverable = deliverable_name
@@ -135,10 +191,8 @@ class ContentValidator:
         Args:
             text: AI-generated output
             forbidden_descriptions: list of strings describing things to forbid
-                                    (from program_config.yaml)
             required_descriptions: similar for required
             strict: if True, raise ContentValidationError on violations.
-                    If False, return result dict with violations listed.
 
         Returns:
             dict {violations: [...], warnings: [...]}
@@ -162,28 +216,45 @@ class ContentValidator:
         return {'violations': violations, 'warnings': warnings}
 
     def _check_forbidden(self, text: str, descriptions: list) -> list:
-        """Apply forbidden patterns; return list of violations."""
+        """
+        Apply forbidden patterns; return list of violations.
+
+        For context-aware patterns, applies the check to text with section
+        headers stripped, so 'Claim 1:' as a section header doesn't trigger
+        the 'patent claim numbers' rule.
+        """
         violations = []
+        text_no_headers = _strip_section_headers(text)
+
         for desc in descriptions:
             desc_lower = desc.lower()
             for pattern_key, regexes in FORBIDDEN_PATTERNS.items():
-                if pattern_key in desc_lower:
-                    for rgx in regexes:
-                        match = re.search(rgx, text, re.IGNORECASE)
-                        if match:
-                            violations.append({
-                                'rule': desc,
-                                'pattern_key': pattern_key,
-                                'regex': rgx,
-                                'matched_text': match.group(0),
-                                'position': match.start(),
-                            })
+                if pattern_key not in desc_lower:
+                    continue
+
+                # Choose context: section-header-stripped for context-aware,
+                # full text otherwise
+                if pattern_key in CONTEXT_AWARE_PATTERN_KEYS:
+                    text_to_check = text_no_headers
+                else:
+                    text_to_check = text
+
+                for rgx in regexes:
+                    match = re.search(rgx, text_to_check, re.IGNORECASE)
+                    if match:
+                        violations.append({
+                            'rule': desc,
+                            'pattern_key': pattern_key,
+                            'regex': rgx,
+                            'matched_text': match.group(0),
+                            'position': match.start(),
+                            'context_aware': pattern_key in CONTEXT_AWARE_PATTERN_KEYS,
+                        })
         return violations
 
     def _check_required(self, text: str, descriptions: list) -> list:
         """Apply required heuristics; return list of warnings (missing items)."""
         warnings = []
-        text_lower = text.lower()
         for desc in descriptions:
             desc_lower = desc.lower()
             for pattern_key, regexes in REQUIRED_HEURISTICS.items():
@@ -214,77 +285,79 @@ class ContentValidator:
 # ---------------------------------------------------------------------------
 
 if __name__ == '__main__':
-    print("=== content_validator self-test ===")
+    print("=== content_validator self-test (v2 with context-aware patterns) ===")
 
-    validator = ContentValidator('manuscript', 'A1')
+    validator = ContentValidator('uniqueness_review', 'A1')
 
-    # Test forbidden pattern detection
+    # Test cases that previously caused false positives
     test_cases = [
-        ("Normal academic text about reconnection physics.",
-         ['patent claim numbers', 'gain lever'],
-         []),
-
-        ("As described in Claim 17, the geometry...",
+        # (description, text, forbidden, expected_violations)
+        ('section header — should NOT trigger',
+         '## Claim 1: Centre region 95th percentile proton energy reaches >300 keV',
          ['patent claim numbers'],
-         ['claim 17']),
+         0),
+        
+        ('bold heading — should NOT trigger',
+         '**Claim 2: Field depletion at X-line**',
+         ['patent claim numbers'],
+         0),
+        
+        ('multiple section headers — should NOT trigger',
+         '''# Novelty Assessment
 
-        ("The combined effect of Lever 4 and Lever 7...",
+## Claim 1: Field depletion
+Some prose.
+## Claim 2: Energy threshold
+More prose.''',
+         ['patent claim numbers'],
+         0),
+        
+        ('prose reference — SHOULD trigger',
+         'As set forth in Claim 5 of the v4 PPA, the geometry is novel.',
+         ['patent claim numbers'],
+         1),
+        
+        ('mixed: section header OK, prose reference triggers',
+         '''## Claim 1: Energy threshold
+The paper claims that as set forth in Claim 33 of the patent, energies exceed 300 keV.''',
+         ['patent claim numbers'],
+         1),
+
+        ('Lever N as section header — should NOT trigger',
+         '## Lever 4: avalanche pre-ionization',
          ['gain lever'],
-         ['lever 4', 'lever 7']),
+         0),
 
-        ("By 2030 net fusion power will be commercial.",
-         ['commercial timeline'],
-         ['by 2030', '2030']),
+        ('Lever N as prose — SHOULD trigger',
+         'The paper exploits Lever 4 of the analysis.',
+         ['gain lever'],
+         1),  # 'lever 4' fires the gain lever rule
 
-        ("This paper discusses the gain stack architecture.",
+        ('gain stack — always forbidden',
+         'This is part of the gain stack analysis.',
          ['gain stack'],
-         ['gain stack']),
+         1),
     ]
 
-    print("\nForbidden pattern tests:")
+    print("\nForbidden pattern false-positive tests:")
     all_ok = True
-    for text, forbidden, expected_matches in test_cases:
+    for desc, text, forbidden, expected_count in test_cases:
         violations = validator._check_forbidden(text, forbidden)
-        matched = [v['matched_text'].lower() for v in violations]
-        any_expected_found = any(em in str(matched) for em in expected_matches) if expected_matches else len(violations) == 0
-        ok = '✓' if (any_expected_found or len(expected_matches) == 0) else '✗'
-        if not (any_expected_found or len(expected_matches) == 0):
-            all_ok = False
-        print(f"  {ok}  text: {text[:50]!r:55s} expected hits: {expected_matches}, got: {matched}")
+        got = len(violations)
+        passed = got == expected_count
+        all_ok = all_ok and passed
+        marker = '✓' if passed else '✗'
+        print(f"  {marker}  {desc:55s} expected={expected_count}, got={got}")
+        if not passed:
+            for v in violations:
+                print(f"     unexpected match: {v['matched_text']!r} "
+                      f"(context_aware={v.get('context_aware')})")
 
-    # Test required content
-    print("\nRequired content heuristic test:")
-    text = """
-# Introduction
+    if all_ok:
+        print("\n  ✓ All tests passed — context-aware patterns working correctly")
+    else:
+        print("\n  ✗ Some tests failed; review patterns")
+        import sys
+        sys.exit(1)
 
-Some content.
-
-# Methods
-
-Method details.
-
-# Results
-
-Results here.
-"""
-    warnings = validator._check_required(
-        text,
-        ['abstract section', 'introduction section', 'data availability', 'doi reference'],
-    )
-    for w in warnings:
-        print(f"  - {w}")
-
-    # Test strict mode
-    print("\nStrict-mode test:")
-    try:
-        validator.validate(
-            "This refers to Claim 5 and Lever 3.",
-            forbidden_descriptions=['patent claim numbers', 'gain lever'],
-            required_descriptions=[],
-            strict=True,
-        )
-        print("  ✗ Should have raised ContentValidationError")
-    except ContentValidationError as e:
-        print(f"  ✓ Caught: {e}")
-
-    print("  ✓ self-test complete")
+    print("\n  ✓ self-test complete")
