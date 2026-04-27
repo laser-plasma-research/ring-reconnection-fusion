@@ -1,0 +1,31 @@
+cff-version: 1.2.0
+title: "Ring-Reconnection Plasma Research"
+message: "If you use this software or its associated data, please cite it as below."
+type: software
+authors:
+  - family-names: "Worth"
+    given-names: "James B."
+    orcid: "https://orcid.org/0009-0005-5000-9497"
+    email: "bworth@substrate.ai"
+    affiliation: "Substrate AI, Valencia, Spain"
+abstract: >-
+  Hybrid particle-in-cell (PIC) simulations of laser-driven plasma physics
+  with focus on ring-geometry magnetic reconnection. Includes the simulation
+  pipeline, analysis tools, and orchestration infrastructure for an
+  independent multi-paper research programme studying ion acceleration
+  through reconnection electric fields in laser-target geometries with
+  potential application to fusion physics and aneutronic fuels.
+keywords:
+  - plasma physics
+  - particle-in-cell simulation
+  - magnetic reconnection
+  - hybrid-PIC
+  - WarpX
+  - laser-plasma interaction
+  - aneutronic fusion
+  - p-11B
+  - non-thermal acceleration
+license: Apache-2.0
+url: "https://github.com/laser-plasma-research"
+date-released: 2026-04-27
+version: "0.1.0-step3"

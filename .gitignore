@@ -1,0 +1,35 @@
+# macOS
+.DS_Store
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+
+# Credentials and secrets
+.env
+.env.*
+*.token
+*_secret.txt
+secrets/
+
+# Simulation outputs (large, go to Zenodo)
+runs/
+*.log
+Backtrace.*
+warpx_used_inputs
+
+# Internal/private content (orchestrator-controlled)
+ip_analysis/
+companion/internal/
+outreach/internal/
+market_intelligence/
+patent_strategy/
+working_notes/
+*.private.md
+deliverables_preflight/
+
+# IDE
+.vscode/
+.idea/

@@ -1,0 +1,1894 @@
+# ============================================================================
+# program_config.yaml
+# Ring-Reconnection Plasma Research Program
+# 
+# Single source of truth for the orchestrator covering:
+#   - Program-level settings (paths, defaults, visibility rules)
+#   - Deliverable type definitions (12 deliverable types fully specified)
+#   - Figure registry (reusable figure specifications)
+#   - Per-paper definitions (current 10-paper Programme A)
+# 
+# US English throughout. All file paths use forward slashes.
+# Last updated: 2026-04-26
+# ============================================================================
+
+
+# ============================================================================
+# PROGRAM-LEVEL SETTINGS
+# ============================================================================
+
+program:
+  name: "Ring-Reconnection Plasma Research"
+  org: "laser-plasma-research"
+  default_max_parallel: 2
+  default_mpi_ranks: 8
+  
+  paths:
+    program_root: "~/research/laser-plasma-research"
+    shared: "~/research/laser-plasma-research/shared"
+    runs_root: "./runs"
+  
+  # ---- Visibility classification ----
+  # Generated .gitignore is derived from these patterns.
+  # public_paths: tracked by Git, pushed to GitHub
+  # private_paths: gitignored, stays local only
+  # always_private: hard-coded credentials/secrets, cannot be made public
+  # Files matching neither default to private (default-deny).
+  visibility:
+    public_paths:
+      - "README.md"
+      - "LICENSE"
+      - "DATA_LICENSE"
+      - "CITATION.cff"
+      - ".gitignore"
+      - "paper/**"
+      - "simulation/**"
+      - "analysis/**"
+      - "data/**/README.md"
+      - "data/**/.gitignore"
+      - "figures/**"
+      - "docs/**"
+      - "scripts/**"
+      - "tests/**"
+      - ".github/**"
+      - "metadata/**"
+      - "companion/public/**"
+      - "companion/partner/**"
+      - "outreach/public/**"
+    
+    private_paths:
+      - "ip_analysis/**"
+      - "companion/internal/**"
+      - "outreach/internal/**"
+      - "market_intelligence/**"
+      - "patent_strategy/**"
+      - "working_notes/**"
+      - "*.private.md"
+      - "**/*.private.md"
+      - "deliverables_preflight/**"
+    
+    always_private:
+      - ".env"
+      - ".env.*"
+      - "*.token"
+      - "*_secret.txt"
+      - "secrets/"
+      - "credentials/"
+      - "*.api_key"
+  
+  # ---- AI orchestrator settings ----
+  drafting:
+    default_model: "claude-opus-4-6"
+    default_language: "en"
+    api_key_env_var: "ANTHROPIC_API_KEY"
+    max_retries: 2
+    api_timeout_seconds: 300
+    
+    # Preflight mode: cheaper/faster model and shorter outputs to validate
+    # the pipeline before committing to full production runs.
+    preflight:
+      model: "claude-sonnet-4-6"
+      length_factor: 0.1   # produces 10% of normal length
+      skip_citation_verification: true
+  
+  # ---- Citation strategy global defaults ----
+  # Per-paper citation_strategy block can override these.
+  citation:
+    default_target_count: 30
+    minimum_acceptable_count: 20
+    crossref_api: "https://api.crossref.org"
+    openalex_api: "https://api.openalex.org"
+    semantic_scholar_api: "https://api.semanticscholar.org"
+    verification_strict: true   # refuse to include unverified citations
+    
+    # Citation visibility strategy: prefer citing high-impact recent work
+    # by authors active in the field. Maximizes citation-alert reach.
+    visibility_strategy:
+      prefer_recent_years: 5            # weight last 5 years higher
+      prefer_high_citation_count: true  # h-index proxy
+      prefer_target_journals: true      # journals reviewers frequent
+      max_self_citations: 3             # don't over-cite own work
+
+
+# ============================================================================
+# JOURNAL PROFILES
+# ============================================================================
+# Per-journal formatting and submission requirements.
+# Looked up by paper.target_journal. Deliverables use these to format output.
+
+journal_profiles:
+  
+  "Physics of Plasmas":
+    publisher: "AIP Publishing"
+    latex_class: "revtex4-2"
+    citation_style: "aps"
+    bibtex_style: "apsrev4-2"
+    typical_words: 6500
+    max_words: 12000
+    figure_format: "pdf"
+    column_width_mm: 89
+    audience: "plasma physicists familiar with PIC simulation methods"
+    requires_competing_interests: true
+    requires_data_availability: true
+    requires_orcid: true
+  
+  "Spectrochimica Acta Part B":
+    publisher: "Elsevier"
+    latex_class: "elsarticle"
+    citation_style: "elsarticle-num"
+    bibtex_style: "elsarticle-num"
+    typical_words: 5500
+    max_words: 8000
+    figure_format: "pdf"
+    column_width_mm: 86
+    audience: "analytical chemists with LIBS or atomic spectroscopy expertise"
+    requires_competing_interests: true
+    requires_data_availability: true
+    requires_orcid: true
+  
+  "Nuclear Fusion":
+    publisher: "IOP Publishing"
+    latex_class: "iopart"
+    citation_style: "iopart-num"
+    bibtex_style: "unsrt"
+    typical_words: 7000
+    max_words: 14000
+    figure_format: "pdf"
+    column_width_mm: 84
+    audience: "fusion physics researchers"
+    requires_competing_interests: true
+    requires_data_availability: true
+    requires_orcid: true
+  
+  "Physical Review Letters":
+    publisher: "American Physical Society"
+    latex_class: "revtex4-2"
+    citation_style: "aps"
+    bibtex_style: "apsrev4-2"
+    typical_words: 3500
+    max_words: 3750   # PRL hard cap
+    figure_format: "pdf"
+    column_width_mm: 89
+    audience: "broad physics readership"
+    requires_competing_interests: true
+    requires_data_availability: true
+    requires_orcid: true
+  
+  "Review of Scientific Instruments":
+    publisher: "AIP Publishing"
+    latex_class: "revtex4-2"
+    citation_style: "aps"
+    bibtex_style: "apsrev4-2"
+    typical_words: 6000
+    max_words: 10000
+    figure_format: "pdf"
+    column_width_mm: 89
+    audience: "experimental physicists building or operating instruments"
+    requires_competing_interests: true
+    requires_data_availability: true
+    requires_orcid: true
+
+
+# ============================================================================
+# FIGURE REGISTRY
+# ============================================================================
+# Reusable figure type definitions. Per-paper analysis.figures references
+# these by type name. Allows consistent figure styling across papers while
+# letting each paper specify its own figure ordering and naming.
+
+figure_registry:
+  
+  fig_ring_geometry:
+    description: "Schematic of N-spot ring geometry with X-line markers"
+    generator: "schematic"
+    width_mm: 89
+    type: "diagram"
+    requires_input: []
+  
+  fig_bfield_evolution:
+    description: "Magnetic field max and mean over simulation time"
+    generator: "field_timeseries"
+    width_mm: 89
+    type: "data"
+    requires_input: ["fields/B"]
+    standard_caption: "Magnetic field evolution over the simulation duration. Top panel shows |B|_max; bottom panel shows |B|_mean."
+  
+  fig_xline_depletion:
+    description: "X-line vs ring B-field ratio over time"
+    generator: "spatial_zone_analysis"
+    width_mm: 89
+    type: "data"
+    requires_input: ["fields/B"]
+    standard_caption: "X-line magnetic field depletion: ratio of mean |B| in X-line zone vs ring zone over time."
+  
+  fig_centre_outer_energy:
+    description: "Centre vs outer 95th percentile proton energy over time"
+    generator: "particle_energy_zones"
+    width_mm: 89
+    type: "data"
+    requires_input: ["particles/proton"]
+    standard_caption: "Centre vs outer proton energy comparison: 95th percentile energy in centre region (r < 200 um) vs outer region."
+  
+  fig_proton_energy_distribution:
+    description: "Proton energy distribution function evolution"
+    generator: "particle_distribution"
+    width_mm: 89
+    type: "data"
+    requires_input: ["particles/proton"]
+    standard_caption: "Proton energy distribution at selected times showing development of suprathermal tail."
+  
+  fig_density_profile:
+    description: "2D density profile snapshots"
+    generator: "field_2d_snapshots"
+    width_mm: 180   # double column
+    type: "data"
+    requires_input: ["fields/rho"]
+    standard_caption: "Density evolution showing plume formation and convergence dynamics."
+  
+  fig_frequency_response:
+    description: "Frequency response curve (centre energy vs rotation frequency)"
+    generator: "frequency_scan"
+    width_mm: 89
+    type: "data"
+    requires_input: ["multiple_runs"]
+    standard_caption: "Centre proton 95th percentile energy as a function of rotation frequency, showing Alfvén sub-harmonic resonance peaks."
+  
+  fig_b_seed_sensitivity:
+    description: "B-field sensitivity scan results"
+    generator: "parameter_scan"
+    width_mm: 89
+    type: "data"
+    requires_input: ["multiple_runs"]
+    standard_caption: "Centre proton energy vs Biermann seed field strength."
+  
+  fig_rod_density_scan:
+    description: "Central rod density parameter scan"
+    generator: "parameter_scan"
+    width_mm: 89
+    type: "data"
+    requires_input: ["multiple_runs"]
+    standard_caption: "Effect of central rod fuel density on centre proton energy and X-line dynamics."
+  
+  fig_outer_ring_comparison:
+    description: "Outer ring catcher geometry comparison"
+    generator: "geometry_comparison"
+    width_mm: 89
+    type: "data"
+    requires_input: ["multiple_runs"]
+    standard_caption: "Comparison of outer ring catcher geometries: inner face only, outer face only, full annulus."
+  
+  fig_lib_fuel_comparison:
+    description: "Lithium-boron fuel comparison"
+    generator: "fuel_comparison"
+    width_mm: 89
+    type: "data"
+    requires_input: ["multiple_runs"]
+    standard_caption: "Centre proton energy and yield estimates across LiB fuel compositions."
+  
+  fig_optimization_matrix:
+    description: "Optimization matrix heatmap"
+    generator: "matrix_heatmap"
+    width_mm: 180
+    type: "data"
+    requires_input: ["paper6_runs"]
+    standard_caption: "Optimization matrix: centre proton energy across base/rod/ring fuel combinations."
+  
+  fig_yield_projection:
+    description: "Engineering yield projection chart"
+    generator: "engineering_projection"
+    width_mm: 180
+    type: "data"
+    requires_input: ["multiple_runs"]
+    standard_caption: "Projected alpha yield per shot scaling from current simulation regime to commercial-class hardware."
+  
+  fig_z_following:
+    description: "Z-following multi-pulse construction"
+    generator: "schematic_with_data"
+    width_mm: 89
+    type: "diagram"
+    requires_input: ["multiple_runs"]
+    standard_caption: "Z-following volumetric construction: N=1, 2, 4, 8 pulse arrangement and resulting energy enhancement."
+  
+  fig_experimental_baseline:
+    description: "Experimental configuration validation"
+    generator: "experimental_layout"
+    width_mm: 89
+    type: "diagram"
+    requires_input: ["fields", "particles"]
+    standard_caption: "Predicted experimental signatures for proposed validation campaign."
+
+
+# ============================================================================
+# DELIVERABLE TYPES
+# ============================================================================
+# Each deliverable type is fully specified once at program level.
+# Per-paper deliverables list just names which types to produce.
+# Drafting context provided per paper supplies the variables.
+
+deliverable_types:
+  
+  # ----------------------------------------------------------------------
+  # MANUSCRIPT — the peer-reviewed paper itself
+  # ----------------------------------------------------------------------
+  manuscript:
+    output_path: "paper/manuscript.tex"
+    visibility: public
+    format: "latex"
+    
+    prompt:
+      system: |
+        You are drafting a peer-reviewed scientific manuscript for the
+        target journal specified. Maintain rigorous technical tone with
+        appropriate hedging for simulation-only results. Use standard
+        paper structure: Abstract, Introduction, Method, Results,
+        Discussion, Conclusions. Cite references using standard journal
+        format. Reference figures using \ref{} commands.
+        
+        Treat the simulation as preliminary computational evidence
+        unless experimental validation is explicitly cited. Avoid
+        promotional language. State limitations honestly.
+      
+      user_template: |
+        Draft a manuscript for the following research:
+        
+        Title: {title}
+        Target journal: {target_journal}
+        Target word count: {drafting_context.target_words}
+        Tone: {drafting_context.tone}
+        
+        Research framing:
+        - Problem: {drafting_context.framing.problem}
+        - Contribution: {drafting_context.framing.contribution}
+        - Limitations: {drafting_context.framing.limitations}
+        
+        Key results to emphasize (in order of importance):
+        {drafting_context.key_results_to_emphasize}
+        
+        Simulation results to incorporate (from analysis/stats/):
+        {analysis_outputs}
+        
+        Available figures to reference:
+        {figures_with_captions}
+        
+        Draft the following sections in standard order:
+        - Abstract (250 words, structured)
+        - Introduction
+        - Method
+        - Results
+        - Discussion
+        - Conclusions
+        
+        Include placeholder references using \cite{key} format.
+        Actual references.bib will be generated separately.
+        
+        Output format: complete LaTeX manuscript using {latex_class} class.
+      
+      forbidden_content:
+        - "Patent claim numbers (e.g. 'Claim 1', 'Claim 33')"
+        - "Gain lever references (e.g. 'Lever 4', 'gain stack')"
+        - "Commercial protection language"
+        - "Specific licensee company names in promotional context"
+        - "Marketing or promotional adjectives ('groundbreaking', 'revolutionary', 'first-ever')"
+        - "Unhedged claims about commercial viability"
+      
+      required_content:
+        - "Standard paper structure: Abstract, Introduction, Method, Results, Discussion, Conclusions"
+        - "Code and Data Availability section (with placeholder GitHub URL and Zenodo DOI)"
+        - "Competing Interests section acknowledging patent application exists (one neutral sentence)"
+        - "Figure references using \\ref{} commands"
+        - "Citation references using \\cite{} commands"
+        - "All quantitative results sourced from analysis_outputs"
+        - "Limitations explicitly stated in Discussion"
+      
+      model: "claude-opus-4-6"
+      max_tokens: 8192
+      temperature: 0.3
+  
+  
+  # ----------------------------------------------------------------------
+  # REFERENCES — the bibliography
+  # Strategically selected and verified against citation databases
+  # ----------------------------------------------------------------------
+  references:
+    output_path: "paper/references.bib"
+    visibility: public
+    format: "bibtex"
+    
+    # References has a special handler that's not just a Claude API call.
+    # Pipeline:
+    #   1. Citation discovery via OpenAlex/Crossref/Semantic Scholar APIs
+    #   2. Author identification (high-impact authors in target community)
+    #   3. Relevance scoring (matches manuscript topics)
+    #   4. Visibility scoring (citation count, recency, target journal match)
+    #   5. Selection by Claude based on scored candidates
+    #   6. DOI verification against Crossref API
+    #   7. BibTeX generation
+    handler: "references_strategic"
+    
+    prompt:
+      system: |
+        You are selecting and arranging citations for a scientific
+        manuscript. The candidates have been pre-filtered for relevance
+        and verified for existence. Select the citations that best:
+        
+        1. Support the methodology and conclusions (scientific completeness)
+        2. Acknowledge prior work in the specific subfield (defensive positioning)
+        3. Cite authors whose work the paper engages with substantively
+           (visibility — these authors will receive citation alerts)
+        
+        Prefer recent influential work over older dated work, except for
+        foundational references that must be acknowledged. Prefer authors
+        and journals on the citation_strategy.preferred lists when
+        candidates are otherwise equivalent.
+      
+      user_template: |
+        Select citations for this manuscript:
+        
+        Manuscript text: {manuscript_text}
+        
+        Citation strategy:
+        - Target count: {citation_strategy.target_count}
+        - Key authors to cite: {citation_strategy.key_authors_to_cite}
+        - Preferred journals: {citation_strategy.preferred_journals}
+        - Required topic coverage: {citation_strategy.required_topic_coverage}
+        
+        Verified candidates (each with DOI, title, authors, year, journal,
+        citation count, abstract):
+        {verified_candidates}
+        
+        Select {citation_strategy.target_count} citations that best serve
+        scientific completeness, defensive positioning, and visibility.
+        For each selected citation, identify which paragraphs of the
+        manuscript would cite it.
+        
+        Output format: BibTeX entries plus a citation_map showing which
+        manuscript sections cite each entry.
+      
+      forbidden_content:
+        - "Citations not present in the verified_candidates list"
+        - "Modified DOIs or made-up references"
+      
+      required_content:
+        - "All citations have valid DOI from verified_candidates"
+        - "Coverage of all required_topic_coverage topics"
+        - "At least one citation for each key_authors_to_cite where available"
+        - "Properly formatted BibTeX matching journal style"
+      
+      model: "claude-opus-4-6"
+      max_tokens: 8192
+      temperature: 0.2
+  
+  
+  # ----------------------------------------------------------------------
+  # PRESS_RELEASE — for science journalists
+  # ----------------------------------------------------------------------
+  press_release:
+    output_path: "companion/public/press_release_{language}.md"
+    visibility: public
+    format: "markdown"
+    
+    prompt:
+      system: |
+        You are writing a science press release for journalists. The
+        goal is to make a technical research result accessible and
+        newsworthy without sacrificing accuracy. Lead with the hook
+        (why this matters), then provide enough detail for a journalist
+        to write a story without further research.
+      
+      user_template: |
+        Write a press release in {language} for:
+        
+        Research: {title}
+        Target audience: General science readers
+        Length: 500-700 words
+        Headline finding: {drafting_context.headline_finding}
+        Significance: {drafting_context.framing.contribution}
+        
+        Required structure:
+        - Suggested headlines (3 options, varying angles)
+        - Dateline ([CITY, DATE])
+        - Lead paragraph (1-2 sentences: hook + significance)
+        - Background (2-3 sentences: context for non-experts)
+        - Key findings (3-4 sentences with specific quantitative results)
+        - Significance paragraph (why this matters, what it enables)
+        - Quote from author (mark as [AUTHOR QUOTE PLACEHOLDER] if not provided)
+        - Methodology summary (1-2 sentences accessible to non-experts)
+        - What's next (1-2 sentences on planned follow-up work)
+        - About / contact information section
+        
+        Quantitative results from analysis: {analysis_outputs}
+      
+      forbidden_content:
+        - "Technical jargon without immediate plain-language explanation"
+        - "Equations or mathematical notation"
+        - "Patent claim references or numbers"
+        - "Commercial licensing language"
+        - "Speculation beyond what results support"
+        - "Disparaging references to competitor companies"
+        - "Made-up author quotes (use placeholder)"
+        - "Marketing superlatives ('revolutionary', 'breakthrough', 'world-first')"
+      
+      required_content:
+        - "Specific quantitative results drawn from analysis_outputs"
+        - "Hook in the first sentence"
+        - "Author quote or [AUTHOR QUOTE PLACEHOLDER]"
+        - "Author name, affiliation, contact email"
+        - "Reference to GitHub URL and Zenodo DOI for code/data"
+      
+      model: "claude-opus-4-6"
+      max_tokens: 1500
+      temperature: 0.5   # slightly creative for prose
+  
+  
+  # ----------------------------------------------------------------------
+  # LAY_SUMMARY — for general audiences and ongoing outreach
+  # ----------------------------------------------------------------------
+  lay_summary:
+    output_path: "companion/public/lay_summary_{language}.md"
+    visibility: public
+    format: "markdown"
+    
+    prompt:
+      system: |
+        You are writing a plain-language summary of scientific research
+        for a general audience (high school graduate reading level).
+        Avoid jargon, explain technical concepts using analogies,
+        emphasize why this matters in the world. Different from a press
+        release: lay summaries are evergreen, used in funding applications,
+        ORCID profiles, university web pages, science outreach.
+      
+      user_template: |
+        Write a lay summary in {language} for:
+        
+        Research: {title}
+        Length: 300-400 words
+        Reading level: high school graduate
+        
+        Structure (no headings, just flowing prose):
+        - What is the problem we're trying to solve?
+        - What did we do?
+        - What did we find?
+        - Why does this matter?
+        
+        Research details: {analysis_outputs}
+        Significance: {drafting_context.framing.contribution}
+      
+      forbidden_content:
+        - "Equations or mathematical notation"
+        - "Technical jargon without analogy or definition"
+        - "Patent or commercial language"
+        - "Self-aggrandizing language"
+      
+      required_content:
+        - "Plain-language explanation suitable for high school reader"
+        - "Specific quantitative results with units"
+        - "Clear statement of why this matters"
+      
+      model: "claude-opus-4-6"
+      max_tokens: 1024
+      temperature: 0.5
+  
+  
+  # ----------------------------------------------------------------------
+  # CONFERENCE_ABSTRACT — for paper submissions to conferences
+  # ----------------------------------------------------------------------
+  conference_abstract:
+    output_path: "companion/public/conference_abstract_{event}_{language}.md"
+    visibility: public
+    format: "markdown"
+    
+    prompt:
+      system: |
+        You are writing a conference abstract for paper submission.
+        Conference abstracts are concise, technical, follow specific
+        structure (background, methods, results, conclusions), and
+        target field specialists who will be at the conference.
+      
+      user_template: |
+        Write a conference abstract for:
+        
+        Research: {title}
+        Target conference: {drafting_context.target_event}
+        Length: 250 words (firm)
+        Audience: domain specialists at the conference
+        
+        Structure:
+        - Background (1-2 sentences)
+        - Methods (2-3 sentences)
+        - Results (3-4 sentences with specific numbers)
+        - Conclusions (1-2 sentences)
+        
+        Research details: {analysis_outputs}
+      
+      forbidden_content:
+        - "Marketing language"
+        - "Patent references"
+        - "Speculation beyond data"
+      
+      required_content:
+        - "Exactly within target word count (or marked over)"
+        - "Specific quantitative results with units"
+        - "Clear methods summary"
+      
+      model: "claude-opus-4-6"
+      max_tokens: 800
+      temperature: 0.3
+  
+  
+  # ----------------------------------------------------------------------
+  # INDUSTRY_BRIEF — for commercial decision-makers
+  # ----------------------------------------------------------------------
+  industry_brief:
+    output_path: "companion/partner/industry_brief.md"
+    visibility: public   # in repo, but flagged as partner-tier
+    format: "markdown"
+    
+    prompt:
+      system: |
+        You are writing a technical capability brief for industry
+        decision-makers (R&D heads, business development, technical
+        buyers). The goal is to convey what the technology does, what
+        performance has been demonstrated, what applications it
+        enables, and how to engage further. Avoid academic framing;
+        focus on commercial application. Be specific about what the
+        technology achieves and what limitations remain.
+      
+      user_template: |
+        Write a technical capability brief for:
+        
+        Technology: {title}
+        Primary application: {drafting_context.primary_application}
+        Length: 800-1200 words (approximately 2 pages)
+        Audience: industry R&D, business development, technical buyers
+        
+        Required structure:
+        - Executive summary (3-5 sentences)
+        - Technology description (2 paragraphs accessible to engineers)
+        - Application areas (specific commercial uses)
+        - Performance characteristics (with specific metrics and units)
+        - Comparison to existing solutions (where data is available)
+        - Technology readiness level (TRL): {drafting_context.trl_level}
+        - Commercial readiness assessment
+        - Engagement path (how to discuss licensing or collaboration)
+        
+        Performance data: {analysis_outputs}
+        Industry context: {drafting_context.industry_context}
+      
+      forbidden_content:
+        - "Specific patent claim numbers or strategic IP details"
+        - "Specific royalty rates or commercial terms"
+        - "Speculation about regulatory approval timelines"
+        - "Made-up market size numbers (must be sourced)"
+        - "Disparaging comparisons to specific competitors"
+      
+      required_content:
+        - "TRL level with justification"
+        - "Specific performance metrics with units"
+        - "Comparison or context vs current alternatives"
+        - "Brief acknowledgment that IP protection exists (one sentence, no specifics)"
+        - "Contact information for licensing/collaboration inquiries"
+      
+      model: "claude-opus-4-6"
+      max_tokens: 4096
+      temperature: 0.3
+  
+  
+  # ----------------------------------------------------------------------
+  # VC_BRIEFING — internal investor-facing material
+  # ----------------------------------------------------------------------
+  vc_briefing:
+    output_path: "companion/internal/vc_briefing.md"
+    visibility: internal   # gitignored
+    format: "markdown"
+    
+    prompt:
+      system: |
+        You are writing an investor-facing briefing for venture capital
+        due diligence. The audience is sophisticated investors evaluating
+        deep tech opportunities. Cover technology, IP, market, team, and
+        risk transparently. This is an INTERNAL document — full IP
+        discussion is appropriate; specific patent claim references and
+        strategic positioning are allowed. Do not exaggerate; investors
+        detect hyperbole and discount proportionally.
+      
+      user_template: |
+        Write a VC briefing for:
+        
+        Technology: {title}
+        IP context: {internal_patent_strategy}
+        Target markets: {drafting_context.target_markets}
+        Length: 4-6 pages (~3000-4000 words)
+        
+        Required structure:
+        - Executive summary (1 page)
+        - Technology overview (technical but accessible)
+        - Market opportunity with specific sizing
+        - Competitive positioning
+        - IP estate including this paper's contribution to claims defense
+        - Team and capability
+        - Risk assessment (technical, market, IP, regulatory)
+        - Funding requirements with use-of-funds breakdown
+        - Milestones to next inflection point
+        
+        This is an INTERNAL document. Full IP details and strategic
+        positioning are appropriate.
+        
+        Research data: {analysis_outputs}
+      
+      forbidden_content:
+        - "Inaccurate market size claims (must cite source)"
+        - "Speculative competitor financial details (only verified public info)"
+        - "Made-up team member names or backgrounds"
+        - "Promised outcomes (use 'targeted', 'projected', 'aim to')"
+      
+      required_content:
+        - "Specific market size with sources"
+        - "Specific patent claims defended (drawn from internal_patent_strategy)"
+        - "Honest risk assessment, not just upside framing"
+        - "Use-of-funds breakdown"
+      
+      model: "claude-opus-4-6"
+      max_tokens: 8192
+      temperature: 0.3
+  
+  
+  # ----------------------------------------------------------------------
+  # POTENTIAL_CLAIMS — patent attorney briefing on new matter
+  # ----------------------------------------------------------------------
+  potential_claims:
+    output_path: "ip_analysis/potential_claims.md"
+    visibility: internal   # gitignored
+    format: "markdown"
+    
+    prompt:
+      system: |
+        You are an analyst supporting patent prosecution. Read the paper
+        and the existing PPA disclosure (provided). Identify any
+        potentially patentable subject matter in the paper that goes
+        beyond what the PPA already discloses. Output is intended to
+        brief a patent attorney for follow-up consultation. Be careful
+        not to overclaim; flag uncertainty for attorney review.
+      
+      user_template: |
+        Analyze the following paper for patentable subject matter:
+        
+        Paper draft: {manuscript_text}
+        Existing PPA reference: {v4_ppa_excerpt}
+        
+        For each technical contribution in the paper, assess:
+        1. What is the contribution?
+        2. Is it disclosed in the existing PPA?
+        3. If new, what type of claim could cover it (method, system, apparatus)?
+        4. Is the contribution novel and non-obvious vs prior art cited in paper?
+        5. Tentative claim language (clearly marked as preliminary)
+        6. Filing strategy recommendation (continuation-in-part, defensive
+           publication, defer, etc.)
+        
+        Output format: structured markdown with sections per contribution.
+        Each section ends with "Attorney consultation recommended: YES/NO".
+      
+      forbidden_content:
+        - "Definitive patentability opinions (this is preliminary analysis)"
+        - "Specific claim language presented as final"
+      
+      required_content:
+        - "Each technical contribution analyzed individually"
+        - "Coverage assessment vs existing PPA"
+        - "Attorney consultation recommendation flag for each"
+      
+      model: "claude-opus-4-6"
+      max_tokens: 4096
+      temperature: 0.2   # conservative for legal-adjacent analysis
+  
+  
+  # ----------------------------------------------------------------------
+  # LICENSING_TARGETS — industry licensee research
+  # ----------------------------------------------------------------------
+  licensing_targets:
+    output_path: "ip_analysis/licensing_targets.md"
+    visibility: internal   # gitignored
+    format: "markdown"
+    
+    prompt:
+      system: |
+        You are researching potential licensees for technology described
+        in the paper. Identify specific companies whose products or
+        roadmaps would benefit from this technology. For each, provide
+        contact strategy and engagement priority. Be specific (named
+        companies, not generic categories). Acknowledge uncertainty
+        where you have limited visibility into a company's current
+        priorities.
+      
+      user_template: |
+        Identify licensing targets for:
+        
+        Technology: {title}
+        Application area: {drafting_context.primary_application}
+        Application sectors: {drafting_context.licensee_categories}
+        
+        For each candidate company, provide:
+        - Company name and headquarters location
+        - Relevant business unit or product line
+        - Why this technology matters to them (specific use case)
+        - Suggested initial contact role (R&D head, BD, IP licensing)
+        - Existing relationship or warm introduction path (if any)
+        - Approach priority (high/medium/low)
+        - Estimated likely deal structure (technology license, joint
+          development, equity exchange)
+        - Typical procurement cycle for similar partnerships
+        - Notes on company current state (financial, M&A, leadership)
+        
+        Output format: ranked list with one company per section.
+        
+        Research findings: {analysis_outputs}
+      
+      forbidden_content:
+        - "Made-up company names or details"
+        - "Confidential information not from public sources"
+        - "Disparaging characterizations of companies"
+      
+      required_content:
+        - "Specific company names with verifiable details"
+        - "Public-source justification for each"
+        - "Approach priority based on stated criteria"
+      
+      model: "claude-opus-4-6"
+      max_tokens: 4096
+      temperature: 0.3
+  
+  
+  # ----------------------------------------------------------------------
+  # VALUATION — patent valuation supporting commercial conversations
+  # ----------------------------------------------------------------------
+  valuation:
+    output_path: "ip_analysis/valuation.md"
+    visibility: internal   # gitignored
+    format: "markdown"
+    
+    prompt:
+      system: |
+        You are producing a structured patent valuation analysis for
+        the patent estate's contribution from this paper. Use standard
+        IP valuation methodology (income approach, market approach,
+        cost approach). Cite sources for all market size and royalty
+        rate assumptions. Distinguish clearly between supported facts
+        and assumptions. Output supports VC due diligence and
+        licensing discussions.
+      
+      user_template: |
+        Produce valuation analysis for:
+        
+        Technology: {title}
+        Patent claims defended: {internal_patent_strategy.defends_claims}
+        Application markets: {drafting_context.target_markets}
+        
+        Structure:
+        - Patent claim coverage map (which claims this paper defends)
+        - Markets addressed by these claims (with sizing and sources)
+        - Royalty rate assumptions (with industry benchmarks cited)
+        - Penetration scenarios (conservative, moderate, aggressive)
+        - Risk-adjusted NPV per scenario
+        - Comparable transaction benchmarks (with sources)
+        - Assumptions worksheet (every assumption listed with confidence)
+        
+        Use standard IP valuation methodology. Show all work.
+        
+        Research data: {analysis_outputs}
+      
+      forbidden_content:
+        - "Single-number valuations without scenario analysis"
+        - "Market size claims without source citations"
+        - "Royalty rate assumptions without industry benchmarks"
+      
+      required_content:
+        - "Three penetration scenarios"
+        - "All assumptions explicitly listed"
+        - "Comparable transactions with sources"
+        - "Confidence levels on key inputs"
+      
+      model: "claude-opus-4-6"
+      max_tokens: 4096
+      temperature: 0.2
+  
+  
+  # ----------------------------------------------------------------------
+  # UNIQUENESS_REVIEW — novelty assessment vs prior art
+  # ----------------------------------------------------------------------
+  uniqueness_review:
+    output_path: "ip_analysis/uniqueness_review.md"
+    visibility: internal   # gitignored
+    format: "markdown"
+    
+    prompt:
+      system: |
+        You are assessing the novelty of technical contributions in this
+        paper against prior art. For each specific claim the paper
+        makes, find the closest prior work and assess whether the paper's
+        contribution is foundational, substantial, incremental, or
+        replicative. The output gates publication and prosecution
+        decisions; be honest about novelty rather than aspirational.
+      
+      user_template: |
+        Assess novelty of:
+        
+        Paper: {title}
+        Specific technical claims: {drafting_context.key_results_to_emphasize}
+        Citation candidates: {verified_candidates}
+        
+        For each technical claim, provide:
+        1. Claim summary (1-2 sentences)
+        2. Closest prior work identified
+        3. Distinguishing features
+        4. Novelty classification:
+           - foundational (genuinely new direction)
+           - substantial (significant advance over prior art)
+           - incremental (modest extension of prior work)
+           - replicative (reproduces prior work in new conditions)
+        5. Defensive value (would prior art likely be cited against
+           a related patent claim during prosecution)
+        6. Citations the paper should add to acknowledge prior work
+        
+        Output format: one section per claim. Conclude with overall
+        novelty assessment and impact prediction (citation count range).
+      
+      forbidden_content:
+        - "Inflated novelty claims unsupported by analysis"
+        - "Citations to non-existent papers"
+      
+      required_content:
+        - "Each claim assessed against specific prior work"
+        - "Novelty classification with justification"
+        - "Honest impact prediction"
+      
+      model: "claude-opus-4-6"
+      max_tokens: 4096
+      temperature: 0.2
+  
+  
+  # ----------------------------------------------------------------------
+  # METADATA — Schema.org JSON-LD and Crossref-ready metadata
+  # ----------------------------------------------------------------------
+  metadata:
+    output_path: "metadata/paper.jsonld"
+    visibility: public
+    format: "json"
+    
+    # Special handler — generates structured metadata files, not prose.
+    # Files produced:
+    #   metadata/schema_org.jsonld
+    #   metadata/dublin_core.xml
+    #   metadata/crossref_deposit.xml (placeholder until DOI minted)
+    #   metadata/related_works.yaml
+    #   metadata/keywords.txt
+    handler: "metadata_structured"
+    
+    prompt:
+      system: |
+        You are generating semantic metadata for indexing services
+        (Google Scholar, Semantic Scholar, OpenAlex, Crossref). Output
+        must be machine-parseable and accurate. Follow Schema.org
+        conventions for ScholarlyArticle and SoftwareSourceCode types.
+      
+      user_template: |
+        Generate metadata for:
+        
+        Title: {title}
+        Authors: {authors}
+        ORCID: {orcid}
+        Target journal: {target_journal}
+        Abstract: {abstract}
+        Keywords (paper-specific): {drafting_context.keywords}
+        Related works: {citation_strategy.key_authors_to_cite}
+        Subject classification: {drafting_context.subject_classifications}
+        
+        Generate:
+        - schema_org.jsonld (ScholarlyArticle type)
+        - dublin_core.xml (DC metadata)
+        - keywords.txt (10-15 keywords for indexing)
+        - plain_language_abstract.md (separate from technical abstract)
+        - related_works.yaml (semantic relationships to other papers)
+      
+      forbidden_content:
+        - "Made-up author names or affiliations"
+        - "Fabricated DOIs"
+        - "Invalid JSON-LD or XML"
+      
+      required_content:
+        - "Valid Schema.org ScholarlyArticle structure"
+        - "Author ORCID linked"
+        - "GitHub URL and Zenodo DOI placeholder"
+        - "Subject classifications matching journal expectations"
+      
+      model: "claude-opus-4-6"
+      max_tokens: 4096
+      temperature: 0.1
+
+
+# ============================================================================
+# PAPERS — current 10-paper Programme A
+# ============================================================================
+# Translation of pb11_run_all_papers.py make_jobs() into YAML.
+# Each paper preserves the existing tag, label, and command structure
+# while adding the new fields needed for AI deliverables.
+
+papers:
+  
+  # ----------------------------------------------------------------------
+  # PAPER 1 — Static p-11B baseline
+  # Foundation paper. Establishes that the simulation framework works
+  # and produces the basic ring-reconnection signature.
+  # ----------------------------------------------------------------------
+  - id: A1
+    paper_num: 1
+    tag: p1_static_p11b
+    label: "Static ring, p-11B base only — 300T Biermann seed"
+    title: "Static p-11B ring-geometry magnetic reconnection: 2D hybrid-PIC baseline"
+    repo_name: "worth-paper-A1-static-pb11"
+    target_journal: "Physics of Plasmas"
+    status: draft
+    
+    simulation:
+      command: "mpirun -n {mpi_ranks} python3 pb11_ring_reconnection_v12_fuel_center_outer.py --base-fuel p11b --b-seed 300 --outdir {outdir} {test_flag}"
+      depends_on: []
+      estimated_runtime_hours: 18
+      output_dir_pattern: "runs/paper{paper_num:02d}/{mode}/{tag}"
+    
+    analysis:
+      command: "python3 analyse_pb11.py --dir {outdir}"
+      figures:
+        - {name: fig1, type: fig_ring_geometry}
+        - {name: fig2, type: fig_bfield_evolution}
+        - {name: fig3, type: fig_xline_depletion}
+        - {name: fig4, type: fig_centre_outer_energy}
+        - {name: fig5, type: fig_proton_energy_distribution}
+    
+    drafting_context:
+      tone: "technical, conservative, baseline-establishing"
+      target_words: 6000
+      headline_finding: "8-spot ring geometry produces sustained magnetic reconnection with centre/outer proton energy differential"
+      
+      key_results_to_emphasize:
+        - "Centre region 95th percentile proton energy reaches >300 keV"
+        - "X-line magnetic field depletes to <50% of ring zone field"
+        - "Reconnection cycling persists for >25 cyclotron periods"
+        - "Centre/outer energy ratio sustained at >1.8x throughout"
+      
+      framing:
+        problem: "Thermal p-11B fusion is bremsstrahlung-limited (Rider 1995, Nevins 1998). Non-thermal acceleration mechanisms can sidestep this limit but require sustained ion energization above the cross-section threshold (500 keV minimum, 3 MeV peak)."
+        contribution: "We demonstrate that 8-spot ring laser geometry with alternating-polarity Biermann battery fields produces spontaneous magnetic reconnection at midpoint X-lines, and that this reconnection accelerates protons in the convergence zone to energies approaching the p-11B fusion threshold."
+        limitations: "2D Cartesian simulation; hybrid-PIC fluid electron approximation; 25 cyclotron period duration; no experimental validation; gain factor below ignition threshold without additional mechanisms."
+      
+      primary_application: "fusion"
+      target_markets: ["fusion energy", "compact neutron sources"]
+      trl_level: 3
+      industry_context: "Independent demonstration of ring-reconnection as alternative to monolithic-laser approaches (HB11, Marvel) and magnetically-confined approaches (TAE)."
+      
+      keywords: ["p-11B fusion", "ring geometry", "magnetic reconnection", "hybrid-PIC", "non-thermal ion acceleration", "Biermann battery", "Alfvén wave", "aneutronic fusion", "WarpX"]
+      subject_classifications: ["physics.plasm-ph", "physics.acc-ph"]
+    
+    citation_strategy:
+      target_count: 30
+      key_authors_to_cite:
+        - "Hora, H."           # avalanche concept
+        - "Labaune, C."        # pre-ionization mechanism
+        - "Belyaev, V."        # X-line acceleration theory
+        - "Roth, M."           # laser-driven ion acceleration
+        - "Picciotto, A."      # 2014 first p-11B observation
+        - "Daido, H."          # TNSA review
+        - "Vay, J.-L."         # WarpX framework
+        - "Drake, J."          # reconnection physics
+        - "Birn, J."           # GEM challenge reconnection
+      preferred_journals:
+        - "Physics of Plasmas"
+        - "Nature Communications"
+        - "Physical Review Letters"
+        - "Nuclear Fusion"
+        - "Plasma Physics and Controlled Fusion"
+      required_topic_coverage:
+        - "p-11B fusion cross-sections"
+        - "magnetic reconnection ion acceleration"
+        - "hybrid-PIC simulation methodology"
+        - "Biermann battery field generation"
+        - "non-thermal fusion arguments"
+        - "WarpX reference implementations"
+      verification_strict: true
+    
+    deliverables:
+      - manuscript
+      - references
+      - press_release
+      - lay_summary
+      - metadata
+      - potential_claims
+      - uniqueness_review
+    
+    internal_patent_strategy:
+      defends_claims: [1, 2, 3, 21]
+      defends_levers: []
+      requires_attorney_review_before_public: false
+      attorney_reviewed_date: null
+      notes: "Foundation paper. Defends core ring-reconnection method claim. No new matter beyond v4 PPA."
+  
+  
+  # ----------------------------------------------------------------------
+  # PAPER 2 — Rotating modulation + frequency scan
+  # Demonstrates that rotational modulation enhances energy gain at
+  # specific resonance frequencies (Alfvén sub-harmonics).
+  # ----------------------------------------------------------------------
+  - id: A2
+    paper_num: 2
+    tag: p2_rotating_program
+    label: "Rotating ring with frequency scan and B-seed sensitivity"
+    title: "Rotational beam modulation in ring-reconnection p-11B fusion: Alfvén sub-harmonic resonance"
+    repo_name: "worth-paper-A2-rotating-pb11"
+    target_journal: "Physics of Plasmas"
+    status: draft
+    
+    # Paper 2 has multiple simulation configurations; the main runner
+    # iterates over them. Listed as separate sub-jobs under simulation.
+    simulation:
+      command: "mpirun -n {mpi_ranks} python3 pb11_ring_reconnection_v12_fuel_center_outer.py --rotate --base-fuel p11b --freq {freq} --b-seed {b_seed} --outdir {outdir} {test_flag}"
+      depends_on: [p1_static_p11b]
+      estimated_runtime_hours: 18
+      output_dir_pattern: "runs/paper{paper_num:02d}/{mode}/{sub_tag}"
+      
+      # Frequency scan sub-jobs
+      sub_jobs:
+        - {sub_tag: "p2_static_baseline", flags_override: "--base-fuel p11b --b-seed 300", note: "Static baseline (copy of Paper 1)"}
+        - {sub_tag: "p2_rotating_500MHz", freq: "500e6", b_seed: 300, note: "Primary rotating point"}
+        - {sub_tag: "p2_freq_100MHz", freq: "100e6", b_seed: 300}
+        - {sub_tag: "p2_freq_208MHz", freq: "208e6", b_seed: 300, note: "Predicted Alfvén sub-harmonic"}
+        - {sub_tag: "p2_freq_300MHz", freq: "300e6", b_seed: 300}
+        - {sub_tag: "p2_freq_416MHz", freq: "416e6", b_seed: 300, note: "Predicted Alfvén sub-harmonic"}
+        - {sub_tag: "p2_freq_500MHz", freq: "500e6", b_seed: 300}
+        - {sub_tag: "p2_freq_750MHz", freq: "750e6", b_seed: 300}
+        - {sub_tag: "p2_freq_1000MHz", freq: "1000e6", b_seed: 300}
+        # B-seed sensitivity sub-jobs
+        - {sub_tag: "p2_bseed_100T", flags_override: "--base-fuel p11b --b-seed 100"}
+        - {sub_tag: "p2_bseed_150T", flags_override: "--base-fuel p11b --b-seed 150"}
+        - {sub_tag: "p2_bseed_200T", flags_override: "--base-fuel p11b --b-seed 200"}
+        - {sub_tag: "p2_bseed_300T", flags_override: "--base-fuel p11b --b-seed 300"}
+        - {sub_tag: "p2_bseed_400T", flags_override: "--base-fuel p11b --b-seed 400"}
+    
+    analysis:
+      command: "python3 pb11_analyse_rotating.py"
+      figures:
+        - {name: fig1, type: fig_ring_geometry}
+        - {name: fig2, type: fig_bfield_evolution, run_filter: "p2_rotating_500MHz"}
+        - {name: fig3, type: fig_xline_depletion, run_filter: "p2_rotating_500MHz"}
+        - {name: fig4, type: fig_centre_outer_energy, run_filter: "p2_rotating_500MHz"}
+        - {name: fig5, type: fig_frequency_response}
+        - {name: fig6, type: fig_b_seed_sensitivity}
+    
+    drafting_context:
+      tone: "technical, demonstrates resonance phenomenon"
+      target_words: 7500
+      headline_finding: "Rotating beam modulation at Alfvén sub-harmonic frequencies (208 and 416 MHz) enhances centre proton energy by 1.8-2.3x over static baseline"
+      
+      key_results_to_emphasize:
+        - "500 MHz rotation produces 469.9 keV centre 95th percentile vs 237.0 keV for static"
+        - "Resonance peaks observed at 208 MHz and 416 MHz consistent with Alfvén sub-harmonic prediction"
+        - "Energy enhancement persists across B-seed range 100-400 T"
+        - "Centre/outer ratio peaks at 1.98x in rotating case"
+      
+      framing:
+        problem: "Static ring reconnection produces some ion acceleration but plateaus below the p-11B threshold. The question is whether dynamic modulation can enhance acceleration through resonant coupling to natural plasma frequencies."
+        contribution: "We demonstrate that rotating the beam modulation at frequencies near the Alfvén sub-harmonics (208 and 416 MHz for our parameters) produces enhanced centre proton energy compared to static operation, with peak enhancement ~2x. The enhancement is robust across the experimentally-plausible Biermann battery field range (100-400 T)."
+        limitations: "2D simulation; intra-pulse modulation idealized; experimental implementation requires kHz-rate AOD or similar; secondary heating mechanisms not modeled."
+      
+      primary_application: "fusion"
+      target_markets: ["fusion energy"]
+      trl_level: 3
+      industry_context: "First demonstration of resonant enhancement in ring-reconnection geometry. Implementation route via AOD with stepped pseudo-rotation makes this commercially accessible."
+      
+      keywords: ["p-11B fusion", "rotational modulation", "Alfvén resonance", "ring reconnection", "frequency scan", "magnetic reconnection", "non-thermal fusion"]
+      subject_classifications: ["physics.plasm-ph", "physics.acc-ph"]
+    
+    citation_strategy:
+      target_count: 35
+      key_authors_to_cite:
+        - "Hora, H."
+        - "Labaune, C."
+        - "Belyaev, V."
+        - "Roth, M."
+        - "Picciotto, A."
+        - "Daido, H."
+        - "Vay, J.-L."
+        - "Drake, J."
+        - "Cole, A."          # Alfvén wave acceleration
+        - "Hasegawa, A."      # Alfvén physics
+      preferred_journals:
+        - "Physics of Plasmas"
+        - "Nature Communications"
+        - "Physical Review Letters"
+      required_topic_coverage:
+        - "Alfvén wave physics"
+        - "magnetic reconnection acceleration"
+        - "rotational laser modulation"
+        - "p-11B fusion mechanisms"
+        - "hybrid-PIC simulation"
+      verification_strict: true
+    
+    deliverables:
+      - manuscript
+      - references
+      - press_release
+      - lay_summary
+      - industry_brief
+      - metadata
+      - potential_claims
+      - licensing_targets
+      - valuation
+      - uniqueness_review
+    
+    internal_patent_strategy:
+      defends_claims: [4, 5, 6, 9, 10]
+      defends_levers: []
+      requires_attorney_review_before_public: false
+      notes: "Defends rotational modulation claims. Resonance result is foundational to the rotation-enhancement claim family."
+  
+  
+  # ----------------------------------------------------------------------
+  # PAPER 3 — Central rod fuel target
+  # Tests yield enhancement from a central rod of fuel-rich material.
+  # ----------------------------------------------------------------------
+  - id: A3
+    paper_num: 3
+    tag: p3_central_rod
+    label: "Central rod fuel target with density and composition scan"
+    title: "Central rod fuel injection in ring-reconnection p-11B fusion: density and composition scan"
+    repo_name: "worth-paper-A3-rod-pb11"
+    target_journal: "Physics of Plasmas"
+    status: draft
+    
+    simulation:
+      command: "mpirun -n {mpi_ranks} python3 pb11_ring_reconnection_v12_fuel_center_outer.py --base-fuel p11b --b-seed 300 --outdir {outdir} {test_flag}"
+      depends_on: [p1_static_p11b]
+      estimated_runtime_hours: 18
+      output_dir_pattern: "runs/paper{paper_num:02d}/{mode}/{sub_tag}"
+      sub_jobs:
+        - {sub_tag: "p3_no_inserts", note: "No inserts baseline"}
+        - {sub_tag: "p3_rod_ammonia", flags_override: "--base-fuel p11b --fuel-rod --rod-fuel ammonia_borane --rod-density 5e24"}
+        - {sub_tag: "p3_rod_p11b", flags_override: "--base-fuel p11b --fuel-rod --rod-fuel p11b --rod-density 5e24"}
+        - {sub_tag: "p3_rod_sweep_5e23", flags_override: "--base-fuel p11b --fuel-rod --rod-fuel ammonia_borane --rod-density 5e23"}
+        - {sub_tag: "p3_rod_sweep_5e24", flags_override: "--base-fuel p11b --fuel-rod --rod-fuel ammonia_borane --rod-density 5e24"}
+        - {sub_tag: "p3_rod_sweep_5e25", flags_override: "--base-fuel p11b --fuel-rod --rod-fuel ammonia_borane --rod-density 5e25"}
+        - {sub_tag: "p3_rod_sweep_5e26", flags_override: "--base-fuel p11b --fuel-rod --rod-fuel ammonia_borane --rod-density 5e26"}
+    
+    analysis:
+      command: "python3 analyse_pb11.py --dir {outdir}"
+      figures:
+        - {name: fig1, type: fig_ring_geometry}
+        - {name: fig2, type: fig_density_profile}
+        - {name: fig3, type: fig_centre_outer_energy}
+        - {name: fig4, type: fig_rod_density_scan}
+    
+    drafting_context:
+      tone: "technical, parameter scan"
+      target_words: 6500
+      headline_finding: "Central rod fuel target with H-rich composition (ammonia borane) yields highest centre proton energy enhancement"
+      
+      key_results_to_emphasize:
+        - "Ammonia borane rod (H:B = 6:1) produces highest centre yield"
+        - "Rod density optimum at 5e24-5e25 m^-3 range"
+        - "Beyond 5e26 produces electrostatic boundary instability"
+      
+      framing:
+        problem: "Adding fuel-rich material at the geometric centre could enhance fusion yield by providing a target for accelerated ions. The question is what fuel composition and density optimizes the trade-off between target richness and electrostatic stability."
+        contribution: "Parameter scan identifies ammonia borane at 5e24-5e25 m^-3 as the optimum central rod composition for p-11B yield enhancement. Higher densities trigger electrostatic boundary instability that disrupts reconnection."
+        limitations: "2D simulation; ion stopping in solid-density rod not fully captured; alpha yield is projection from suprathermal proton flux."
+      
+      primary_application: "fusion"
+      target_markets: ["fusion energy"]
+      trl_level: 3
+      industry_context: "Multi-zone target geometry is a distinguishing feature of ring-reconnection vs single-laser approaches."
+      
+      keywords: ["p-11B fusion", "ammonia borane", "central rod target", "fuel composition", "yield enhancement"]
+      subject_classifications: ["physics.plasm-ph"]
+    
+    citation_strategy:
+      target_count: 28
+      key_authors_to_cite:
+        - "Hora, H."
+        - "Picciotto, A."
+        - "Labaune, C."
+        - "Belyaev, V."
+        - "Roth, M."
+        - "Vay, J.-L."
+      preferred_journals:
+        - "Physics of Plasmas"
+        - "Nature Communications"
+      required_topic_coverage:
+        - "p-11B fuel preparation"
+        - "ammonia borane plasma sources"
+        - "multi-zone target design"
+      verification_strict: true
+    
+    deliverables:
+      - manuscript
+      - references
+      - press_release
+      - lay_summary
+      - metadata
+      - potential_claims
+      - uniqueness_review
+    
+    internal_patent_strategy:
+      defends_claims: [26, 27, 28]
+      requires_attorney_review_before_public: false
+      notes: "Defends multi-zone target claims. Ammonia borane rod is specifically claimed."
+  
+  
+  # ----------------------------------------------------------------------
+  # PAPER 4 — Outer ring catcher geometry
+  # ----------------------------------------------------------------------
+  - id: A4
+    paper_num: 4
+    tag: p4_outer_ring
+    label: "Outer ring catcher geometry comparison"
+    title: "Outer ring catcher geometries in ring-reconnection p-11B fusion"
+    repo_name: "worth-paper-A4-outer-ring-pb11"
+    target_journal: "Physics of Plasmas"
+    status: draft
+    
+    simulation:
+      command: "mpirun -n {mpi_ranks} python3 pb11_ring_reconnection_v12_fuel_center_outer.py --base-fuel p11b --b-seed 300 --outdir {outdir} {test_flag}"
+      depends_on: [p1_static_p11b]
+      estimated_runtime_hours: 18
+      output_dir_pattern: "runs/paper{paper_num:02d}/{mode}/{sub_tag}"
+      sub_jobs:
+        - {sub_tag: "p4_ring_inner", flags_override: "--base-fuel p11b --fuel-ring-inner --ring-fuel p11b --ring-density 5e24"}
+        - {sub_tag: "p4_ring_outer", flags_override: "--base-fuel p11b --fuel-ring-outer --ring-fuel p11b --ring-density 5e24"}
+        - {sub_tag: "p4_ring_full", flags_override: "--base-fuel p11b --fuel-ring-full --ring-fuel p11b --ring-density 5e24"}
+        - {sub_tag: "p4_radius_900um", flags_override: "--base-fuel p11b --fuel-ring-full --ring-fuel p11b --outer-radius-um 900 --ring-density 5e24"}
+        - {sub_tag: "p4_radius_1050um", flags_override: "--base-fuel p11b --fuel-ring-full --ring-fuel p11b --outer-radius-um 1050 --ring-density 5e24"}
+        - {sub_tag: "p4_radius_1200um", flags_override: "--base-fuel p11b --fuel-ring-full --ring-fuel p11b --outer-radius-um 1200 --ring-density 5e24"}
+        - {sub_tag: "p4_radius_1500um", flags_override: "--base-fuel p11b --fuel-ring-full --ring-fuel p11b --outer-radius-um 1500 --ring-density 5e24"}
+    
+    analysis:
+      command: "python3 analyse_pb11.py --dir {outdir}"
+      figures:
+        - {name: fig1, type: fig_ring_geometry}
+        - {name: fig2, type: fig_outer_ring_comparison}
+        - {name: fig3, type: fig_density_profile}
+        - {name: fig4, type: fig_centre_outer_energy}
+    
+    drafting_context:
+      tone: "technical, geometry comparison"
+      target_words: 6500
+      headline_finding: "Full outer ring catcher annulus produces highest yield; inner-face geometry inadequate"
+      
+      key_results_to_emphasize:
+        - "Full annulus catcher captures highest fraction of accelerated ions"
+        - "Optimal radius 1050 um matches initial ring spacing"
+        - "Radii beyond 1200 um lose containment"
+      
+      framing:
+        problem: "Ions accelerated outward from X-lines can be captured by an outer ring catcher to provide a secondary fuel population. The geometry of this catcher determines capture efficiency and overall yield."
+        contribution: "Comparison of inner-face, outer-face, and full annulus catcher geometries demonstrates that full annulus produces highest yield. Optimal radius is matched to initial ring spacing."
+        limitations: "2D simulation; full 3D capture geometry not modeled; alpha yield estimated from proton flux."
+      
+      primary_application: "fusion"
+      target_markets: ["fusion energy"]
+      trl_level: 3
+      industry_context: "Outer ring catcher is a unique geometric feature of ring-reconnection designs."
+      
+      keywords: ["p-11B fusion", "outer ring catcher", "geometry optimization"]
+      subject_classifications: ["physics.plasm-ph"]
+    
+    citation_strategy:
+      target_count: 25
+      key_authors_to_cite: ["Hora, H.", "Belyaev, V.", "Labaune, C.", "Vay, J.-L."]
+      preferred_journals: ["Physics of Plasmas", "Nuclear Fusion"]
+      required_topic_coverage: ["p-11B fusion", "ion capture geometry"]
+      verification_strict: true
+    
+    deliverables:
+      - manuscript
+      - references
+      - press_release
+      - lay_summary
+      - metadata
+      - potential_claims
+      - uniqueness_review
+    
+    internal_patent_strategy:
+      defends_claims: [29, 30]
+      requires_attorney_review_before_public: false
+  
+  
+  # ----------------------------------------------------------------------
+  # PAPER 5 — Lithium-boron hybrid fuel
+  # ----------------------------------------------------------------------
+  - id: A5
+    paper_num: 5
+    tag: p5_lib_hybrid
+    label: "Lithium-boron hybrid fuel comparison"
+    title: "Lithium-boron hybrid fuels in ring-reconnection: aneutronic fusion fuel comparison"
+    repo_name: "worth-paper-A5-lib-hybrid"
+    target_journal: "Physics of Plasmas"
+    status: draft
+    
+    simulation:
+      command: "mpirun -n {mpi_ranks} python3 pb11_ring_reconnection_v12_fuel_center_outer.py --b-seed 300 --outdir {outdir} {test_flag}"
+      depends_on: [p1_static_p11b]
+      estimated_runtime_hours: 18
+      output_dir_pattern: "runs/paper{paper_num:02d}/{mode}/{sub_tag}"
+      sub_jobs:
+        - {sub_tag: "p5_baseline_p11b", flags_override: "--base-fuel p11b --b-seed 300"}
+        - {sub_tag: "p5_p7li_all", flags_override: "--base-fuel p7li --fuel-rod --rod-fuel p7li --fuel-ring-full --ring-fuel li7_target"}
+        - {sub_tag: "p5_lib_equal", flags_override: "--base-fuel lib_equal --fuel-rod --rod-fuel lib_equal --fuel-ring-full --ring-fuel lib_equal"}
+        - {sub_tag: "p5_lib_li_rich", flags_override: "--base-fuel lib_li_rich --fuel-rod --rod-fuel lib_li_rich --fuel-ring-full --ring-fuel lib_li_rich"}
+        - {sub_tag: "p5_lib_nat_li", flags_override: "--base-fuel lib_nat_li --fuel-rod --rod-fuel lib_nat_li --fuel-ring-full --ring-fuel lib_nat_li"}
+    
+    analysis:
+      command: "python3 analyse_pb11.py --dir {outdir}"
+      figures:
+        - {name: fig1, type: fig_ring_geometry}
+        - {name: fig2, type: fig_lib_fuel_comparison}
+        - {name: fig3, type: fig_centre_outer_energy}
+        - {name: fig4, type: fig_proton_energy_distribution}
+    
+    drafting_context:
+      tone: "technical, multi-fuel comparison"
+      target_words: 7000
+      headline_finding: "Equal-ratio lithium-boron mixtures provide multi-channel aneutronic fusion path with comparable centre proton energies to pure p-11B"
+      
+      key_results_to_emphasize:
+        - "Equal LiB hybrid produces centre energies within 15% of pure p-11B"
+        - "Multi-channel reactions (p+11B, p+7Li, p+6Li) all aneutronic"
+        - "Natural-Li mixture viable without isotope enrichment"
+      
+      framing:
+        problem: "Pure p-11B has a high cross-section threshold (500 keV+). Lithium reactions p+7Li and p+6Li have lower thresholds but different yield characteristics. A hybrid fuel could combine benefits."
+        contribution: "Lithium-boron hybrid fuels produce multi-channel aneutronic fusion conditions in the ring-reconnection geometry. Equal LiB and Li-rich mixtures yield comparable centre proton energies to pure p-11B with potentially lower threshold burden."
+        limitations: "Yield estimates based on suprathermal flux; multi-channel cross-section integration approximated; isotope enrichment assumed for B-11 and Li-7."
+      
+      primary_application: "fusion"
+      target_markets: ["fusion energy", "neutron sources (low yield)"]
+      trl_level: 3
+      industry_context: "Multi-fuel flexibility distinguishes ring-reconnection from single-fuel competitor approaches."
+      
+      keywords: ["p-11B fusion", "p-7Li fusion", "lithium-boron hybrid", "aneutronic fusion", "multi-channel"]
+      subject_classifications: ["physics.plasm-ph"]
+    
+    citation_strategy:
+      target_count: 28
+      key_authors_to_cite: ["Hora, H.", "Picciotto, A.", "Bonner, J.", "Vay, J.-L."]
+      preferred_journals: ["Physics of Plasmas", "Nuclear Fusion"]
+      required_topic_coverage:
+        - "p-7Li fusion"
+        - "lithium-boron compounds"
+        - "aneutronic fusion fuels"
+        - "multi-channel reactions"
+      verification_strict: true
+    
+    deliverables:
+      - manuscript
+      - references
+      - press_release
+      - lay_summary
+      - metadata
+      - potential_claims
+      - uniqueness_review
+    
+    internal_patent_strategy:
+      defends_claims: [22, 25]
+      requires_attorney_review_before_public: false
+  
+  
+  # ----------------------------------------------------------------------
+  # PAPER 6 — Optimization matrix (large parameter sweep)
+  # Special handling — uses preflight to identify top configurations
+  # before committing to full production runs
+  # ----------------------------------------------------------------------
+  - id: A6
+    paper_num: 6
+    tag: p6_optimization_matrix
+    label: "Optimization matrix: base/rod/ring fuel combinations"
+    title: "Multi-zone fuel optimization for ring-reconnection p-11B fusion"
+    repo_name: "worth-paper-A6-optimization-matrix"
+    target_journal: "Physics of Plasmas"
+    status: draft
+    
+    simulation:
+      command: "mpirun -n {mpi_ranks} python3 pb11_ring_reconnection_v12_fuel_center_outer.py --b-seed 300 --outdir {outdir} {test_flag}"
+      depends_on: []
+      estimated_runtime_hours: 18
+      output_dir_pattern: "runs/paper{paper_num:02d}/{mode}/{sub_tag}"
+      
+      # Paper 6 uses programmatic sub-job generation — 32 combinations
+      # of base × rod × ring fuel. The runner expands these.
+      generate_sub_jobs:
+        type: "matrix"
+        dimensions:
+          base_fuel: ["p11b", "lib_equal"]
+          rod_fuel: ["ammonia_borane", "p11b", "lib_equal", "b11_target"]
+          ring_fuel: ["p11b", "lib_equal", "lib_nat_li", "b11_target"]
+        flag_template: "--base-fuel {base_fuel} --fuel-rod --rod-fuel {rod_fuel} --fuel-ring-full --ring-fuel {ring_fuel}"
+        tag_template: "p6_b_{base_fuel}_r_{rod_fuel}_o_{ring_fuel}"
+      
+      # Special handling: Paper 6 uses two-phase execution
+      # Phase 1: short preflight scan to identify top-N configs
+      # Phase 2: full production runs for top-N
+      execution_mode: "phased"
+      phase1_steps: 25      # quick scan
+      phase2_top_n: 5       # promote top 5 to full production
+    
+    analysis:
+      command: "python3 analyse_pb11.py --dir {outdir}"
+      cross_run_analysis: true
+      figures:
+        - {name: fig1, type: fig_optimization_matrix}
+        - {name: fig2, type: fig_centre_outer_energy, run_filter: "top_5"}
+        - {name: fig3, type: fig_proton_energy_distribution, run_filter: "top_5"}
+    
+    drafting_context:
+      tone: "technical, optimization study"
+      target_words: 7500
+      headline_finding: "Multi-zone fuel optimization identifies p-11B + ammonia borane rod + LiB outer ring as best configuration"
+      
+      key_results_to_emphasize:
+        - "Top configurations identified from 32-combination matrix"
+        - "Ammonia borane rod is consistent feature of high-yield configs"
+        - "LiB outer ring provides best secondary capture"
+      
+      framing:
+        problem: "Ring-reconnection geometry has three distinct fuel zones (base, central rod, outer ring) and many fuel choices for each. Identifying the optimal combination requires systematic parameter scan."
+        contribution: "Two-phase optimization (preflight scan + production validation) of 32 fuel combinations identifies the top 5 configurations. Ammonia borane central rod is a consistent feature of high-yield configurations."
+        limitations: "Matrix sweep limited by simulation cost; second-order interactions not exhaustively mapped; 3D geometry effects not captured."
+      
+      primary_application: "fusion"
+      target_markets: ["fusion energy"]
+      trl_level: 3
+      industry_context: "Demonstrates engineering optimization methodology applicable to ring-reconnection commercial design."
+      
+      keywords: ["fuel optimization", "ring-reconnection", "parameter sweep", "ammonia borane", "lithium-boron"]
+      subject_classifications: ["physics.plasm-ph"]
+    
+    citation_strategy:
+      target_count: 28
+      key_authors_to_cite: ["Hora, H.", "Picciotto, A.", "Vay, J.-L."]
+      preferred_journals: ["Physics of Plasmas", "Nuclear Fusion"]
+      required_topic_coverage: ["p-11B fuel optimization", "design of experiments"]
+      verification_strict: true
+    
+    deliverables:
+      - manuscript
+      - references
+      - press_release
+      - lay_summary
+      - metadata
+      - potential_claims
+      - uniqueness_review
+    
+    internal_patent_strategy:
+      defends_claims: [26, 27, 28, 29, 30]
+      requires_attorney_review_before_public: false
+      notes: "Optimization study supports the multi-zone target claim family with quantitative basis."
+  
+  
+  # ----------------------------------------------------------------------
+  # PAPER 7 — Engineering yield projection (analysis only)
+  # No new simulations; combines results from Papers 1-5 to project
+  # engineering performance at production scale
+  # ----------------------------------------------------------------------
+  - id: A7
+    paper_num: 7
+    tag: p7_engineering_projection
+    label: "Engineering yield projection (analysis only)"
+    title: "Engineering yield projection for ring-reconnection p-11B fusion: laboratory to commercial scaling"
+    repo_name: "worth-paper-A7-engineering-projection"
+    target_journal: "Nuclear Fusion"
+    status: draft
+    
+    simulation:
+      analysis_only: true
+      depends_on: [p1_static_p11b, p2_rotating_500MHz, p3_rod_ammonia, p4_ring_full, p5_lib_equal]
+      estimated_runtime_hours: 0   # no simulation
+    
+    analysis:
+      command: "python3 scripts/cross_paper_yield_projection.py --runs-root {runs_root} --output {outdir}"
+      cross_run_analysis: true
+      figures:
+        - {name: fig1, type: fig_yield_projection}
+        - {name: fig2, type: fig_optimization_matrix}
+    
+    drafting_context:
+      tone: "engineering analysis, projection-heavy"
+      target_words: 8000
+      headline_finding: "Production-scale ring-reconnection projects to commercial-class proton flux at kHz repetition rate"
+      
+      key_results_to_emphasize:
+        - "Production-class extrapolation requires gain stack with 12 levers"
+        - "Most accessible commercial application is compact neutron source"
+        - "Power generation requires multiple gain levers concurrent"
+      
+      framing:
+        problem: "Laboratory-scale simulation results need to be projected to commercial-scale operating regimes to assess viability of ring-reconnection for power generation, neutron production, and other applications."
+        contribution: "Engineering analysis projects the laboratory results from Papers 1-5 to commercial operation, identifying the gain factors and operating regimes required for each commercial application."
+        limitations: "Projection-based analysis; no new simulations; relies on extrapolation from current 2D results to 3D production-scale operation."
+      
+      primary_application: "fusion"
+      target_markets: ["fusion energy", "compact neutron sources", "medical isotopes"]
+      trl_level: 3
+      industry_context: "Roadmap document supporting commercial conversations and grant applications."
+      
+      keywords: ["fusion engineering", "yield projection", "commercial scaling", "ring-reconnection roadmap"]
+      subject_classifications: ["physics.plasm-ph"]
+    
+    citation_strategy:
+      target_count: 35
+      key_authors_to_cite: ["Hora, H.", "Picciotto, A.", "Belyaev, V.", "Roth, M."]
+      preferred_journals: ["Nuclear Fusion", "Physics of Plasmas", "Fusion Engineering and Design"]
+      required_topic_coverage:
+        - "fusion engineering scaling"
+        - "p-11B commercial pathways"
+        - "compact fusion roadmaps"
+      verification_strict: true
+    
+    deliverables:
+      - manuscript
+      - references
+      - lay_summary
+      - industry_brief
+      - metadata
+      - vc_briefing
+      - potential_claims
+      - licensing_targets
+      - valuation
+      - uniqueness_review
+    
+    internal_patent_strategy:
+      defends_claims: [40, 41, 42, 43, 44, 45, 46]
+      defends_levers: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+      requires_attorney_review_before_public: true
+      attorney_reviewed_date: null
+      notes: "Touches the full power generation claim family. Attorney review required before public release."
+  
+  
+  # ----------------------------------------------------------------------
+  # PAPER 8 — Z-following multi-pulse construction
+  # ----------------------------------------------------------------------
+  - id: A8
+    paper_num: 8
+    tag: p8_z_following
+    label: "Z-following multi-pulse volumetric construction"
+    title: "Z-following multi-pulse construction in ring-reconnection p-11B fusion: 3D geometry projection"
+    repo_name: "worth-paper-A8-z-following"
+    target_journal: "Physics of Plasmas"
+    status: draft
+    
+    simulation:
+      command: "mpirun -n {mpi_ranks} python3 pb11_ring_reconnection_v12_fuel_center_outer.py --base-fuel p11b --fuel-rod --rod-fuel ammonia_borane --rod-density 5e24 --outdir {outdir} {test_flag}"
+      depends_on: [p3_rod_ammonia]
+      estimated_runtime_hours: 18
+      output_dir_pattern: "runs/paper{paper_num:02d}/{mode}/{sub_tag}"
+      sub_jobs:
+        - {sub_tag: "p8_N1_baseline", flags_override: "--base-fuel p11b --fuel-rod --rod-fuel ammonia_borane --rod-density 5e24 --rod-radius-um 75"}
+        - {sub_tag: "p8_N2_zfollow", flags_override: "--base-fuel p11b --fuel-rod --rod-fuel ammonia_borane --rod-density 5e24 --rod-radius-um 150"}
+        - {sub_tag: "p8_N4_zfollow", flags_override: "--base-fuel p11b --fuel-rod --rod-fuel ammonia_borane --rod-density 5e24 --rod-radius-um 300"}
+        - {sub_tag: "p8_N8_zfollow", flags_override: "--base-fuel p11b --fuel-rod --rod-fuel ammonia_borane --rod-density 5e24 --rod-radius-um 600"}
+    
+    analysis:
+      command: "python3 analyse_pb11.py --dir {outdir}"
+      figures:
+        - {name: fig1, type: fig_z_following}
+        - {name: fig2, type: fig_centre_outer_energy}
+        - {name: fig3, type: fig_proton_energy_distribution}
+    
+    drafting_context:
+      tone: "technical, geometry extension"
+      target_words: 6500
+      headline_finding: "Z-following multi-pulse construction provides linear scaling of accelerated ion population with N"
+      
+      key_results_to_emphasize:
+        - "N=1, 2, 4, 8 pulse arrangements show consistent scaling"
+        - "Centre energy maintained as effective volume increases"
+        - "Volumetric construction routes to commercial scaling"
+      
+      framing:
+        problem: "Single-shot ring-reconnection produces a localized acceleration zone. Scaling to commercial yields requires either repetition rate or volumetric construction. Z-following multi-pulse construction is one path to volumetric scaling."
+        contribution: "Z-following multi-pulse arrangement (N=1 through N=8) demonstrates that volumetric construction preserves centre energy while scaling effective interaction volume linearly with N."
+        limitations: "2D simulations approximate 3D z-following; pulse-pulse interaction at small spacing not modeled; production rep rate constraints not addressed."
+      
+      primary_application: "fusion"
+      target_markets: ["fusion energy"]
+      trl_level: 3
+      industry_context: "Z-following construction is an engineering route to commercial yield scaling without requiring kHz rep rates."
+      
+      keywords: ["z-following", "multi-pulse", "volumetric construction", "ring-reconnection scaling"]
+      subject_classifications: ["physics.plasm-ph"]
+    
+    citation_strategy:
+      target_count: 25
+      key_authors_to_cite: ["Hora, H.", "Belyaev, V.", "Vay, J.-L."]
+      preferred_journals: ["Physics of Plasmas"]
+      required_topic_coverage: ["multi-pulse laser fusion", "volumetric scaling"]
+      verification_strict: true
+    
+    deliverables:
+      - manuscript
+      - references
+      - press_release
+      - lay_summary
+      - metadata
+      - potential_claims
+      - uniqueness_review
+    
+    internal_patent_strategy:
+      defends_claims: [11, 12]
+      requires_attorney_review_before_public: false
+  
+  
+  # ----------------------------------------------------------------------
+  # PAPER 9 — Static experimental validation configuration
+  # ----------------------------------------------------------------------
+  - id: A9
+    paper_num: 9
+    tag: p9_static_experimental
+    label: "Static experimental validation configuration"
+    title: "Predicted experimental signatures for ring-reconnection p-11B validation: static configuration"
+    repo_name: "worth-paper-A9-static-experimental"
+    target_journal: "Physics of Plasmas"
+    status: draft
+    
+    simulation:
+      command: "mpirun -n {mpi_ranks} python3 pb11_ring_reconnection_v12_fuel_center_outer.py --base-fuel p11b --fuel-rod --rod-fuel ammonia_borane --rod-density 5e24 --fuel-ring-full --ring-fuel p11b --ring-density 5e24 --outdir {outdir} {test_flag}"
+      depends_on: []
+      estimated_runtime_hours: 18
+    
+    analysis:
+      command: "python3 analyse_pb11.py --dir {outdir}"
+      figures:
+        - {name: fig1, type: fig_experimental_baseline}
+        - {name: fig2, type: fig_centre_outer_energy}
+        - {name: fig3, type: fig_proton_energy_distribution}
+    
+    drafting_context:
+      tone: "technical, predictive for experiment"
+      target_words: 6000
+      headline_finding: "Predicted experimental signatures for static ring-reconnection validation: proton energy spectrum and X-line dynamics"
+      
+      key_results_to_emphasize:
+        - "Predicted proton energy spectrum at convergence zone"
+        - "Predicted X-line magnetic field signature"
+        - "Detector specifications for experimental validation"
+      
+      framing:
+        problem: "Validation of the ring-reconnection mechanism requires experimental measurement. The expected signatures need to be specified in advance to guide detector placement and calibration."
+        contribution: "Specification of predicted experimental signatures for static ring-reconnection validation, including proton energy spectrum, X-line magnetic field, and convergence zone density."
+        limitations: "Predictions are simulation-based; experimental conditions may produce different absolute values."
+      
+      primary_application: "fusion"
+      target_markets: ["fusion energy"]
+      trl_level: 4   # next step is experimental validation
+      industry_context: "Bridge document between simulation programme and facility validation campaigns (CLPU, ELI, PALS)."
+      
+      keywords: ["experimental validation", "ring-reconnection", "predicted signatures", "p-11B fusion"]
+      subject_classifications: ["physics.plasm-ph"]
+    
+    citation_strategy:
+      target_count: 28
+      key_authors_to_cite: ["Hora, H.", "Picciotto, A.", "Labaune, C.", "Belyaev, V."]
+      preferred_journals: ["Physics of Plasmas", "Review of Scientific Instruments"]
+      required_topic_coverage:
+        - "fusion experimental diagnostics"
+        - "Thomson parabola spectrometers"
+        - "CR-39 nuclear track detectors"
+      verification_strict: true
+    
+    deliverables:
+      - manuscript
+      - references
+      - press_release
+      - lay_summary
+      - industry_brief
+      - metadata
+      - potential_claims
+      - uniqueness_review
+    
+    internal_patent_strategy:
+      defends_claims: [49, 50]
+      requires_attorney_review_before_public: false
+      notes: "Defends the integral diagnostic suite claim and research instrument claim."
+  
+  
+  # ----------------------------------------------------------------------
+  # PAPER 10 — Rotating experimental validation
+  # ----------------------------------------------------------------------
+  - id: A10
+    paper_num: 10
+    tag: p10_rotating_experimental
+    label: "Rotating LiB experimental validation configuration"
+    title: "Predicted experimental signatures for ring-reconnection rotating LiB validation"
+    repo_name: "worth-paper-A10-rotating-experimental"
+    target_journal: "Physics of Plasmas"
+    status: draft
+    
+    simulation:
+      command: "mpirun -n {mpi_ranks} python3 pb11_ring_reconnection_v12_fuel_center_outer.py --rotate --freq 500e6 --base-fuel lib_equal --fuel-rod --rod-fuel lib_equal --rod-density 5e24 --fuel-ring-full --ring-fuel lib_equal --ring-density 5e24 --outdir {outdir} {test_flag}"
+      depends_on: [p9_static_experimental]
+      estimated_runtime_hours: 22
+    
+    analysis:
+      command: "python3 analyse_pb11.py --dir {outdir}"
+      figures:
+        - {name: fig1, type: fig_experimental_baseline}
+        - {name: fig2, type: fig_centre_outer_energy}
+        - {name: fig3, type: fig_proton_energy_distribution}
+        - {name: fig4, type: fig_frequency_response}
+    
+    drafting_context:
+      tone: "technical, predictive for experiment"
+      target_words: 6500
+      headline_finding: "Predicted experimental signatures for rotating LiB ring-reconnection: enhanced proton energy and broadened spectrum"
+      
+      key_results_to_emphasize:
+        - "Predicted proton energy enhancement vs static configuration"
+        - "Predicted multi-channel reaction signatures (p+11B, p+7Li, p+6Li)"
+        - "Detector specifications for differentiating rotating vs static modes"
+      
+      framing:
+        problem: "Validation of rotational enhancement requires comparing rotating and static modes experimentally. The predicted signature differences need specification."
+        contribution: "Predicted experimental signatures for rotating LiB ring-reconnection, including enhancement factor over static and multi-channel reaction differentiation."
+        limitations: "Predictions based on 2D simulations; rotational mode implementation requires kHz-rate beam steering."
+      
+      primary_application: "fusion"
+      target_markets: ["fusion energy"]
+      trl_level: 4
+      industry_context: "Defines the experimental campaign to validate the rotational enhancement claim."
+      
+      keywords: ["rotational modulation", "experimental validation", "LiB hybrid", "ring-reconnection"]
+      subject_classifications: ["physics.plasm-ph"]
+    
+    citation_strategy:
+      target_count: 30
+      key_authors_to_cite: ["Hora, H.", "Picciotto, A.", "Labaune, C.", "Belyaev, V.", "Roth, M."]
+      preferred_journals: ["Physics of Plasmas", "Review of Scientific Instruments"]
+      required_topic_coverage:
+        - "fusion experimental validation"
+        - "rotational laser modulation"
+        - "lithium-boron fuels"
+      verification_strict: true
+    
+    deliverables:
+      - manuscript
+      - references
+      - press_release
+      - lay_summary
+      - industry_brief
+      - metadata
+      - potential_claims
+      - uniqueness_review
+    
+    internal_patent_strategy:
+      defends_claims: [4, 5, 6, 22, 49, 50]
+      requires_attorney_review_before_public: true
+      attorney_reviewed_date: null
+      notes: "Combines rotational claim family with multi-fuel claims; attorney review recommended."
+
+
+# ============================================================================
+# END OF program_config.yaml
+# ============================================================================
