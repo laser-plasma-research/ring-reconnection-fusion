@@ -1,0 +1,684 @@
+# ============================================================================
+# program_config_paper2.yaml
+# Paper 2 — GHz-scale intra-pulse modulation at the natural reconnection cycle
+#
+# UPDATED: 2026-05-06 (rev 4) — densified sub-cycle bracketing (33/36/38 GHz)
+#                                  based on cluster-resolved 12-peak analysis
+#
+# REFINED PHYSICS (from LD 512² ultrafine 12-peak analysis):
+#
+#   Two distinct timescales visible in static reconnection:
+#
+#   (a) BIG CYCLE — major fusion-grade burst envelope
+#       - Peaks at 15, 67, 195, 225 ps with characteristic spacing 52-67 ps
+#       - Single 502 keV (above p-11B threshold) burst at t=67 ps
+#       - f_big ≈ 17-19 GHz
+#
+#   (b) SUB CYCLE — active-phase sub-cycle (within reconnection windows)
+#       - Three peaks at 195/225/247 ps spaced 22-30 ps
+#       - Active sub-cycle f_sub ≈ 30-33 GHz
+#
+#   Both are physically meaningful. Paper 2 must span them.
+#
+# CADENCE NOTE:
+#   Ultrafine 7.5 ps cadence resolves up to ~33 GHz cleanly (4 samples/cycle).
+#   For 36-50 GHz, switch to dump-period 33 (~5 ps cadence, 5+ samples/cycle).
+#   For >50 GHz, dump-period 16 (~2.4 ps cadence) needed to avoid aliasing.
+#
+# PHILOSOPHY: We do NOT pre-commit to one peak frequency. The sweep itself
+# identifies the resonance peak from the data. Densify around BOTH 18 GHz
+# and 30 GHz windows to capture either or both peaks.
+#
+# RUN STRUCTURE (3 phases):
+#
+#   Phase 1: GHz frequency sweep at 256²        11 runs, ~17 hours
+#     - 10/15/18/22/30/33/36/38/40/50/100 GHz
+#     - Densely sampled around BOTH suspected resonance regions:
+#         big cycle 18 GHz (median spacing 52.4 ps → 19.1 GHz)
+#         sub cycle 33-38 GHz (modal spacing 30 ps → 33.3 GHz; mean → 35.6 GHz)
+#     - Identifies actual resonance peak(s) from data
+#
+#   Phase 2: Convergence at 512² ultrafine       3 runs, ~18 hours
+#     - 10/[peak]/100 GHz — peak frequency confirmed AFTER Phase 1
+#     - Default to 30 GHz; revise after Phase 1 if peak elsewhere
+#
+#   Phase 3: Long-time at peak frequency         2 runs, ~30 hours
+#     - 256² long (vs Paper 1 static long baseline)
+#     - 512² long (full convergence)
+#     - Frequency confirmed after Phase 1; default 30 GHz
+#
+# TOTAL COMPUTE: ~65 hours
+# PEAK DISK: 1.6 TB (single 512² long run)
+#
+# Launch (recommended):
+#   # 1. Run priority-1 quad FIRST to identify actual peak (~6h)
+#   python cloud_run_all.py --config program_config_paper2.yaml --paper A2 \
+#     --jobs p2_ghz_18,p2_ghz_33,p2_ghz_36,p2_ghz_38
+#
+#   # 2. After confirming peak location, run rest of Phase 1 (~12h)
+#   python cloud_run_all.py --config program_config_paper2.yaml --paper A2
+#
+#   # 3. EDIT Phase 2 + 3 frequencies if peak ≠ 30 GHz, then re-launch
+#
+# Preconditions:
+#   - Paper 1 baselines from Paper 1:
+#       runs/p1_ld_512_4500_ultrafine    (674 ps @ 512² — for ultrafine comparison)
+#       runs/p1_ld_256_200k_long_v2      (30 ns @ 256² — for long comparison)
+#       runs/p1_ld_512_200k_long         (30 ns @ 512² — alternative long baseline)
+#   - cloud_run_all.py running locally on Mac (orchestrator)
+#   - freq_resonance_ghz.py deployed on cloud at analysis_scripts/
+#   - run_full_analysis.sh + 8-stage pipeline ready on cloud
+#   - simulation script v12.14 supports --rotate --freq flags
+# ============================================================================
+
+program:
+  name: "Paper 2 — GHz Intra-Pulse Modulation at Natural Reconnection Frequency"
+  org: "laser-plasma-research"
+  contact_email: "bworth@substrate.ai"
+  default_max_parallel: 1
+
+  paths:
+    program_root: "~/laser-plasma-research"
+    runs_root: "./runs"
+    simulation_script: "simulation/pb11_ring_reconnection_v12_fuel_center_outer.py"
+    analysis_pipeline: "analysis_scripts/run_full_analysis.sh"
+
+
+journal_profiles:
+  "Nature Energy":
+    publisher: "Nature Publishing Group"
+    typical_words: 5000
+    audience: "broad energy research community"
+  "Physical Review X":
+    publisher: "American Physical Society"
+    typical_words: 8000
+    audience: "physicists, broad scope high-impact"
+  "Physics of Plasmas":
+    publisher: "AIP Publishing"
+    typical_words: 7000
+    audience: "plasma physicists familiar with PIC simulation methods"
+
+
+# ============================================================================
+# PAPERS
+# ============================================================================
+
+papers:
+  - id: A2
+    paper_num: 2
+    tag: p2_ghz_modulation
+    label: "GHz intra-pulse modulation at natural reconnection cycle (~18 or ~30 GHz)"
+    title: >
+      Resonant enhancement of laser-driven aneutronic fusion via intra-pulse
+      modulation at the natural reconnection cycle frequency
+    repo_name: "worth-paper-A2-ghz-modulation"
+    target_journal: "Nature Energy"
+    fallback_journals: ["Physical Review X", "Physics of Plasmas"]
+    status: planned
+
+    natural_frequency:
+      big_cycle_estimate_ghz: 18.0
+      big_cycle_window_ghz: [15.0, 22.0]
+      big_cycle_derivation: >
+        From LD 512² ultrafine 12-peak analysis, big-cycle inter-peak
+        spacings cluster at 52.4, 52.4, 52.4, 67.3 ps (median 52.4 ps,
+        mean 56.1 ps) → 17.8-19.1 GHz envelope frequency. The single
+        threshold-crossing 502 keV burst at t=67 ps follows the initial
+        pinch at 15 ps with 52.4 ps spacing.
+      sub_cycle_estimate_ghz: 35.6
+      sub_cycle_window_ghz: [33.0, 45.0]
+      sub_cycle_derivation: >
+        Sub-cycle inter-peak spacings cluster at 22.4, 29.9, 30.0, 30.0 ps
+        (median 30.0 ps, mean 28.1 ps) → 33.3-35.6 GHz active-phase
+        sub-cycle. The 22.4 ps outlier pulls the mean up; the modal
+        spacing of 30 ps maps to 33.3 GHz. Sweep spans 33-40 GHz with
+        densified bracketing at 33/36/38 GHz to resolve which interpretation
+        (modal vs mean) governs the resonance peak.
+      harmonic_relationship: >
+        Big cycle (~17.8 GHz) and sub cycle (~35.6 GHz) are within 1% of
+        a fundamental + 2nd harmonic relationship, suggesting both arise
+        from the same reconnection oscillator. Slow-drift spacings of
+        89.8, 89.9, 104.8 ps (~10.5 GHz) are near the subharmonic.
+      strategy: >
+        Densify Phase 1 sweep around BOTH 18 GHz (big cycle) and 33-38 GHz
+        (sub cycle, bracketing modal-vs-mean uncertainty) to identify which
+        timescale (or both) gives the strongest resonance enhancement.
+
+    static_baselines:
+      ultrafine:
+        run_dir: "runs/p1_ld_512_4500_ultrafine"
+        description: "Paper 1 LD 512² ultrafine — 674 ps, 91 dumps, 7.5 ps cadence"
+        duration_ps: 674
+        cadence_ps: 7.5
+        resolution: 512
+        used_for: "ultrafine sweep comparison (Phase 1, Phase 2)"
+        peak_e95_core_keV: 502478
+        peak_e95_core_time_ps: 67.4
+        peak_core_spot_ratio: 1.704
+      long:
+        run_dir: "runs/p1_ld_512_200k_long"
+        description: "Paper 1 LD 512² long — 30 ns, 51 dumps, 599 ps cadence (resolution-converged)"
+        duration_ns: 30.0
+        cadence_ps: 599
+        resolution: 512
+        used_for: "long-run comparison (Phase 3)"
+        equilibrium_e95_core_keV: 355
+        cumulative_alphas: 2.28e14
+        Q_maxwellian: 21.16
+
+    simulation:
+      base_flags: >
+        --base-fuel ch_bn
+        --base-density 5e24
+        --b-seed 85
+        --n-spots 8
+        --lx-min-um 9600
+        --diag-profile custom
+
+      cadence_configs:
+        ultrafine_default:
+          max_steps: 4500
+          dump_period: 50
+          duration_ps: 674
+          cadence_ps: 7.5
+          expected_dumps: 91
+          well_resolved_freq_range_ghz: [0, 33]
+        ultrafine_high_freq:
+          max_steps: 4500
+          dump_period: 33
+          duration_ps: 674
+          cadence_ps: 4.94
+          expected_dumps: 137
+          well_resolved_freq_range_ghz: [0, 50]
+        ultrafine_very_high_freq:
+          max_steps: 4500
+          dump_period: 16
+          duration_ps: 674
+          cadence_ps: 2.40
+          expected_dumps: 282
+          well_resolved_freq_range_ghz: [0, 100]
+        long:
+          max_steps: 200000
+          dump_period: 4000
+          duration_ns: 30
+          cadence_ps: 600
+          expected_dumps: 51
+          rationale: "Match LD 512² long baseline cadence for direct comparison"
+
+      runtime_estimates:
+        ultrafine_256_hours: 1.5
+        ultrafine_512_hours: 6
+        long_256_hours: 6
+        long_512_hours: 11    # actual runtime from LD 512 long was 11h 9min
+
+      disk_estimates:
+        ultrafine_256_gb: 50
+        ultrafine_512_gb: 200
+        ultrafine_256_high_cadence_gb: 75
+        ultrafine_256_very_high_cadence_gb: 150
+        long_256_gb: 400
+        long_512_gb: 838  # actual from LD 512 long
+
+      sub_jobs:
+
+        # ════════════════════════════════════════════════════════════════
+        # PHASE 1: GHz FREQUENCY SWEEP @ 256²  (11 runs, ~17 hours)
+        # Densely sampled around BOTH 18 GHz (big cycle) and 30 GHz (sub cycle)
+        # ════════════════════════════════════════════════════════════════
+
+        - sub_tag: "p2_ghz_10"
+          freq_hz: 1.0e10
+          freq_label: "10 GHz"
+          resolution: 256
+          cadence: ultrafine_default
+          regime: "slow-drift candidate / sub-resonant reference"
+          phase: 1
+          priority: 3
+          flags_override: >
+            --base-fuel ch_bn --base-density 5e24 --b-seed 85 --n-spots 8
+            --lx-min-um 9600 --nx 256 --nz 256
+            --max-steps 4500 --dump-period 50
+            --diag-profile custom
+            --rotate --freq 10e9
+          note: "Near slow-drift band (90-105 ps spacings → ~10.5 GHz subharmonic). Either resonance candidate or sub-resonant reference. ~1.5h, ~50GB."
+
+        - sub_tag: "p2_ghz_15"
+          freq_hz: 1.5e10
+          freq_label: "15 GHz"
+          resolution: 256
+          cadence: ultrafine_default
+          regime: "approaching big cycle (lower flank)"
+          phase: 1
+          priority: 2
+          flags_override: >
+            --base-fuel ch_bn --base-density 5e24 --b-seed 85 --n-spots 8
+            --lx-min-um 9600 --nx 256 --nz 256
+            --max-steps 4500 --dump-period 50
+            --diag-profile custom
+            --rotate --freq 15e9
+          note: "Lower flank of big cycle window. f/f_big = 0.83. ~1.5h, ~50GB."
+
+        - sub_tag: "p2_ghz_18"
+          freq_hz: 1.8e10
+          freq_label: "18 GHz"
+          resolution: 256
+          cadence: ultrafine_default
+          regime: "BIG CYCLE candidate (envelope frequency)"
+          phase: 1
+          priority: 1
+          flagship: true
+          flags_override: >
+            --base-fuel ch_bn --base-density 5e24 --b-seed 85 --n-spots 8
+            --lx-min-um 9600 --nx 256 --nz 256
+            --max-steps 4500 --dump-period 50
+            --diag-profile custom
+            --rotate --freq 18e9
+          note: "BIG CYCLE flagship candidate (52-67 ps envelope). f/f_big = 1.00. ~1.5h, ~50GB."
+
+        - sub_tag: "p2_ghz_22"
+          freq_hz: 2.2e10
+          freq_label: "22 GHz"
+          resolution: 256
+          cadence: ultrafine_default
+          regime: "above big cycle, below sub cycle"
+          phase: 1
+          priority: 2
+          flags_override: >
+            --base-fuel ch_bn --base-density 5e24 --b-seed 85 --n-spots 8
+            --lx-min-um 9600 --nx 256 --nz 256
+            --max-steps 4500 --dump-period 50
+            --diag-profile custom
+            --rotate --freq 22e9
+          note: "Inter-band reference (above 18 GHz, below 33 GHz). ~1.5h, ~50GB."
+
+        - sub_tag: "p2_ghz_30"
+          freq_hz: 3.0e10
+          freq_label: "30 GHz"
+          resolution: 256
+          cadence: ultrafine_default
+          regime: "between big and sub cycles (lower flank of sub band)"
+          phase: 1
+          priority: 2
+          flags_override: >
+            --base-fuel ch_bn --base-density 5e24 --b-seed 85 --n-spots 8
+            --lx-min-um 9600 --nx 256 --nz 256
+            --max-steps 4500 --dump-period 50
+            --diag-profile custom
+            --rotate --freq 30e9
+          note: "Below sub cycle band (modal spacing 30 ps maps to 33.3 GHz). Useful as lower-flank reference. ~1.5h, ~50GB."
+
+        - sub_tag: "p2_ghz_33"
+          freq_hz: 3.3e10
+          freq_label: "33 GHz"
+          resolution: 256
+          cadence: ultrafine_default
+          regime: "SUB CYCLE modal candidate (modal spacing 30 ps → 33.3 GHz)"
+          phase: 1
+          priority: 1
+          flagship: true
+          flags_override: >
+            --base-fuel ch_bn --base-density 5e24 --b-seed 85 --n-spots 8
+            --lx-min-um 9600 --nx 256 --nz 256
+            --max-steps 4500 --dump-period 50
+            --diag-profile custom
+            --rotate --freq 33e9
+          note: "SUB CYCLE modal candidate (3 of 4 sub-cycle spacings = 30.0 ps). f/f_sub_modal = 0.99. ~1.5h, ~50GB."
+
+        - sub_tag: "p2_ghz_36"
+          freq_hz: 3.6e10
+          freq_label: "36 GHz"
+          resolution: 256
+          cadence: ultrafine_high_freq
+          regime: "SUB CYCLE near-mean candidate (mean spacing 28.1 ps → 35.6 GHz)"
+          phase: 1
+          priority: 1
+          flagship: true
+          flags_override: >
+            --base-fuel ch_bn --base-density 5e24 --b-seed 85 --n-spots 8
+            --lx-min-um 9600 --nx 256 --nz 256
+            --max-steps 4500 --dump-period 33
+            --diag-profile custom
+            --rotate --freq 36e9
+          note: "SUB CYCLE near-mean candidate. Tighter cadence (4.9 ps) needed >33 GHz. ~1.5h, ~75GB."
+
+        - sub_tag: "p2_ghz_38"
+          freq_hz: 3.8e10
+          freq_label: "38 GHz"
+          resolution: 256
+          cadence: ultrafine_high_freq
+          regime: "SUB CYCLE upper-mean candidate"
+          phase: 1
+          priority: 1
+          flagship: true
+          flags_override: >
+            --base-fuel ch_bn --base-density 5e24 --b-seed 85 --n-spots 8
+            --lx-min-um 9600 --nx 256 --nz 256
+            --max-steps 4500 --dump-period 33
+            --diag-profile custom
+            --rotate --freq 38e9
+          note: "SUB CYCLE upper-mean candidate. Tighter cadence (4.9 ps) needed >33 GHz. ~1.5h, ~75GB."
+
+        - sub_tag: "p2_ghz_40"
+          freq_hz: 4.0e10
+          freq_label: "40 GHz"
+          resolution: 256
+          cadence: ultrafine_high_freq
+          regime: "supra-resonant transition"
+          phase: 1
+          priority: 2
+          flags_override: >
+            --base-fuel ch_bn --base-density 5e24 --b-seed 85 --n-spots 8
+            --lx-min-um 9600 --nx 256 --nz 256
+            --max-steps 4500 --dump-period 33
+            --diag-profile custom
+            --rotate --freq 40e9
+          note: "Above sub cycle. Tighter cadence (4.9 ps). ~1.5h, ~75GB."
+
+        - sub_tag: "p2_ghz_50"
+          freq_hz: 5.0e10
+          freq_label: "50 GHz"
+          resolution: 256
+          cadence: ultrafine_high_freq
+          regime: "supra-resonant"
+          phase: 1
+          priority: 2
+          flags_override: >
+            --base-fuel ch_bn --base-density 5e24 --b-seed 85 --n-spots 8
+            --lx-min-um 9600 --nx 256 --nz 256
+            --max-steps 4500 --dump-period 33
+            --diag-profile custom
+            --rotate --freq 50e9
+          note: "Sustained sheet regime expected. ~1.5h, ~75GB."
+
+        - sub_tag: "p2_ghz_100"
+          freq_hz: 1.0e11
+          freq_label: "100 GHz"
+          resolution: 256
+          cadence: ultrafine_very_high_freq
+          regime: "deep supra-resonant"
+          phase: 1
+          priority: 3
+          flags_override: >
+            --base-fuel ch_bn --base-density 5e24 --b-seed 85 --n-spots 8
+            --lx-min-um 9600 --nx 256 --nz 256
+            --max-steps 4500 --dump-period 16
+            --diag-profile custom
+            --rotate --freq 100e9
+          note: "Deep supra-resonant reference. Tightest cadence (2.4 ps). ~2h, ~150GB."
+
+        # ════════════════════════════════════════════════════════════════
+        # PHASE 2: CONVERGENCE @ 512² ULTRAFINE  (3 runs, ~18 hours)
+        # Default targets 30 GHz peak. EDIT after Phase 1 confirms actual peak.
+        # ════════════════════════════════════════════════════════════════
+
+        - sub_tag: "p2_ghz_10_512"
+          freq_hz: 1.0e10
+          freq_label: "10 GHz (512² convergence)"
+          resolution: 512
+          cadence: ultrafine_default
+          regime: "sub-resonant convergence"
+          phase: 2
+          priority: 3
+          convergence_for: "p2_ghz_10"
+          flags_override: >
+            --base-fuel ch_bn --base-density 5e24 --b-seed 85 --n-spots 8
+            --lx-min-um 9600 --nx 512 --nz 512
+            --max-steps 4500 --dump-period 50
+            --diag-profile custom
+            --rotate --freq 10e9
+          note: "512² convergence at sub-resonant control. ~6h, ~200GB."
+
+        - sub_tag: "p2_ghz_30_512"
+          freq_hz: 3.0e10
+          freq_label: "30 GHz (512² convergence) — DEFAULT"
+          resolution: 512
+          cadence: ultrafine_default
+          regime: "resonance peak convergence (default — verify after Phase 1)"
+          phase: 2
+          priority: 1
+          flagship: true
+          convergence_for: "p2_ghz_30"
+          flags_override: >
+            --base-fuel ch_bn --base-density 5e24 --b-seed 85 --n-spots 8
+            --lx-min-um 9600 --nx 512 --nz 512
+            --max-steps 4500 --dump-period 50
+            --diag-profile custom
+            --rotate --freq 30e9
+          note: "512² convergence at default peak. EDIT FREQ AFTER PHASE 1. ~6h, ~200GB."
+
+        - sub_tag: "p2_ghz_100_512"
+          freq_hz: 1.0e11
+          freq_label: "100 GHz (512² convergence)"
+          resolution: 512
+          cadence: ultrafine_very_high_freq
+          regime: "supra-resonant convergence"
+          phase: 2
+          priority: 2
+          convergence_for: "p2_ghz_100"
+          flags_override: >
+            --base-fuel ch_bn --base-density 5e24 --b-seed 85 --n-spots 8
+            --lx-min-um 9600 --nx 512 --nz 512
+            --max-steps 4500 --dump-period 16
+            --diag-profile custom
+            --rotate --freq 100e9
+          note: "512² convergence at deep supra-resonant. ~6h, ~600GB."
+
+        # ════════════════════════════════════════════════════════════════
+        # PHASE 3: LONG @ PEAK FREQUENCY  (2 runs, ~30 hours)
+        # Default targets 30 GHz. EDIT after Phase 1 confirms actual peak.
+        # ════════════════════════════════════════════════════════════════
+
+        - sub_tag: "p2_ghz_30_long_256"
+          freq_hz: 3.0e10
+          freq_label: "30 GHz LONG (256²) — DEFAULT"
+          resolution: 256
+          cadence: long
+          regime: "RESONANCE — sustained operation (default — verify after Phase 1)"
+          phase: 3
+          priority: 1
+          flagship: true
+          compare_against: "runs/p1_ld_256_200k_long_v2"
+          flags_override: >
+            --base-fuel ch_bn --base-density 5e24 --b-seed 85 --n-spots 8
+            --lx-min-um 9600 --nx 256 --nz 256
+            --max-steps 200000 --dump-period 2000
+            --diag-profile custom
+            --rotate --freq 30e9
+          note: >
+            30 ns at default peak vs static long. EDIT FREQ AFTER PHASE 1.
+            ~6h, ~400GB.
+
+        - sub_tag: "p2_ghz_30_long_512"
+          freq_hz: 3.0e10
+          freq_label: "30 GHz LONG (512² convergence) — DEFAULT"
+          resolution: 512
+          cadence: long
+          regime: "RESONANCE — long convergence (default — verify after Phase 1)"
+          phase: 3
+          priority: 1
+          flagship: true
+          convergence_for: "p2_ghz_30_long_256"
+          flags_override: >
+            --base-fuel ch_bn --base-density 5e24 --b-seed 85 --n-spots 8
+            --lx-min-um 9600 --nx 512 --nz 512
+            --max-steps 200000 --dump-period 4000
+            --diag-profile custom
+            --rotate --freq 30e9
+          note: >
+            30 ns at default peak at 512². EDIT FREQ AFTER PHASE 1.
+            ~11h, ~840GB. Compare directly to Paper 1 LD 512² long baseline.
+
+      compute_plan:
+        phase_1_sweep_256:
+          n_runs: 11
+          hours_per_run: 1.5
+          total_hours: 17
+          gb_total: 750  # 6×50 (default) + 4×75 (high_freq: 36/38/40/50) + 1×150 (100 GHz)
+        phase_2_convergence_512:
+          n_runs: 3
+          total_hours: 18
+          gb_total: 1000
+        phase_3_long:
+          n_runs: 2
+          long_256_hours: 6
+          long_512_hours: 11
+          total_hours: 17
+          gb_total: 1240
+        totals:
+          n_runs: 16
+          total_compute_hours: 52
+          peak_disk_gb_per_run: 838
+          total_disk_if_retained_gb: 2940
+
+        scheduling_notes: >
+          STAGED LAUNCH STRATEGY (recommended):
+
+          Stage A (~6h): Run priority-1 quad first
+            python cloud_run_all.py --paper A2 --jobs p2_ghz_18,p2_ghz_33,p2_ghz_36,p2_ghz_38
+
+            This identifies which timescale (big cycle ~18 GHz or sub cycle
+            ~33-38 GHz) shows the strongest resonance, with three samples
+            bracketing the sub-cycle modal-vs-mean uncertainty (33 modal,
+            36 near-mean, 38 upper-mean). If results are clear after these
+            4 runs, we know which window to focus on. ~6h compute, ~250GB disk.
+
+          Stage B (~12h): Complete Phase 1
+            python cloud_run_all.py --paper A2
+
+            Skips already-completed jobs via state file. Runs 7 remaining priority
+            2/3 frequencies. ~11h compute, ~500GB disk.
+
+          Stage C (~30h): Phase 2 + Phase 3 with confirmed peak frequency
+            REQUIRED: Edit YAML to update Phase 2 + 3 frequencies if peak ≠ 30 GHz.
+            Then: python cloud_run_all.py --paper A2
+
+            ~28h compute, ~2 TB peak disk.
+
+          Total: ~52h compute over ~3-4 days wall clock.
+
+          PARALLEL MAC WORK: Paper 1 figure refinement, PPA v5 supplemental,
+          industry contact prep, manuscript drafting.
+
+        cleanup_strategy: >
+          Particles + fields deleted after each run completes successfully.
+          Figures + reports + cache npz retained on cloud and downloaded to Mac.
+          Peak disk usage stays under 2 TB.
+
+    analysis:
+      pipeline_script: "analysis_scripts/run_full_analysis.sh"
+      stages: 8
+      required_outputs_per_run:
+        reports:
+          - post_analysis_report.txt
+          - zone_report.txt
+          - phase_analysis_report.txt
+          - reconnection_summary.txt
+          - fusion_diagnostics.csv
+          - reconnection_rate_offline.csv
+          - fusion_accounting_notes.txt
+        simulation_csvs:
+          - run_meta.txt
+          - fusion_rate_power_by_iter.csv
+          - reconnection_rate_by_iter.csv
+          - step_time_index.csv
+        figures_required:
+          - figures/composite_snapshots.png
+          - figures/composite_evolution.png
+          - figures/b_evolution.mp4
+          - figures/fusion_grade_fractions_vs_time.png
+          - figures/spectrum_evolution_heatmap.png
+          - figures/peak_snapshot_fusion_grade.png
+          - figures/energy_distribution_by_zone_at_peak.png
+          - figures/particle_density_by_energy.mp4
+          - figures/acceleration_tracer.mp4
+          - figures/energy_spectrum_evolution.mp4
+          - figures/particle_trajectories.mp4
+          - figures/trajectory_summary.png
+          - figures/trajectory_energy_evolution.png
+
+    post_program_analysis:
+      - script: "freq_resonance_ghz.py"
+        description: "GHz resonance scan across sweep + convergence + long flagship"
+        args: >
+          --base-dir runs
+          --static-ultrafine runs/p1_ld_512_4500_ultrafine
+          --static-long runs/p1_ld_512_200k_long
+        output_file: "freq_resonance_GHz_sweep.txt"
+        notes: >
+          Three-section report:
+          (1) Sweep + flagship vs static ultrafine baseline (identifies peak)
+          (2) Resolution convergence (256² vs 512² ultrafine)
+          (3) Long-run head-to-head: peak frequency long vs static long baseline
+
+    figures:
+      - id: fig1
+        title: "Frequency response: peak E95_core vs modulation frequency"
+        type: resonance_curve
+        x_range_ghz: [10, 100]
+        annotations: ["big cycle 18 GHz", "sub cycle 33-38 GHz", "p-11B threshold 500 keV"]
+        is_headline: true
+      - id: fig2
+        title: "B-field evolution: static / 18 / 36 / 100 GHz (ultrafine cadence)"
+        type: animation_grid
+        panels: 4
+      - id: fig3
+        title: "Proton energy spectra at peak reconnection burst"
+        type: spectrum_overlay
+      - id: fig4
+        title: "Resolution convergence: 256² vs 512² at 10/peak/100 GHz"
+        type: convergence_panel
+        panels: 3
+      - id: fig5
+        title: "Long-time sustained operation: peak frequency vs static (30 ns)"
+        type: long_time_comparison
+      - id: fig6
+        title: "Engineering implementation: peak-frequency EOM modulator schematic"
+        type: schematic
+
+    drafting_context:
+      tone: "high-impact, accessible to energy community, precise on physics"
+      target_words: 5500
+      target_journal_first: "Nature Energy"
+
+      headline_finding: >
+        Modulation of laser-driven 8-spot ring magnetic reconnection at the
+        natural reconnection cycle frequency produces resonant enhancement of
+        non-thermal proton acceleration above the p-11B fusion threshold. The
+        natural cycle frequency is in the 5G mmWave band (FR2, 24-52 GHz),
+        enabling implementation with thin-film LN electro-optic modulators
+        at system cost 3-4 orders of magnitude below NIF.
+
+      key_results:
+        - "Two distinct natural timescales: big cycle (~18 GHz) and sub cycle (~33-38 GHz)"
+        - "Resonance peak identified at [TBD after Phase 1] GHz"
+        - "Sub-resonant null at 10 GHz indistinguishable from static (or slow-drift candidate)"
+        - "Supra-resonant regime change at 50+ GHz (sustained current sheet)"
+        - "Long-run (30 ns) confirms sustained enhancement at peak vs static"
+        - "Implementation: thin-film LN EOMs operate to 320 GHz; peak frequency in 5G FR2"
+
+      keywords:
+        - "magnetic reconnection"
+        - "resonant modulation"
+        - "p-11B aneutronic fusion"
+        - "natural cycle frequency"
+        - "5G mmWave FR2 band"
+        - "thin-film lithium niobate"
+        - "hybrid-PIC simulation"
+
+    internal_patent_strategy:
+      defends_claims:
+        - "modulation at natural reconnection cycle frequency"
+        - "EOM intra-pulse amplitude division"
+        - "8-spot ring timing with GHz-class modulator"
+        - "preferred frequency range 15-40 GHz for LD plasma at 5e24 m^-3"
+        - "frequency scaling with plasma density (f ∝ √n_e) and B-field (f ∝ B)"
+        - "method of identifying f_natural by ultrafine static reference shot"
+      requires_attorney_review_before_public: true
+      ppa_update_needed: true
+      ppa_update_notes: >
+        PPA v4 cites 208/416/500 MHz preferred embodiments — these are deep
+        sub-resonant. Need v5 (or supplemental provisional) before arXiv with:
+        15-40 GHz preferred frequency range (with central candidates at 18 and
+        33-38 GHz), density-dependent frequency scaling, EOM intra-pulse division
+        claim, commercial LN modulator implementation, 5G mmWave FR2
+        correspondence, and the method of f_natural identification.

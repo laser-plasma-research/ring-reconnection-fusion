@@ -15,7 +15,33 @@ import numpy as np
 parser = argparse.ArgumentParser()
 parser.add_argument('--dir', default='pb11_debug_diags',
                     help='Diagnostics directory (default: pb11_debug_diags)')
+parser.add_argument('--report', default=None,
+                    help='Save report to this path. If unspecified or "auto", '
+                         'defaults to <dir>/text_analysis_report.txt. Use "stdout" '
+                         'or "" or "-" to disable file output.')
 args = parser.parse_args()
+
+# ─── Tee output to file (default: inside run dir) ──────────────────────────
+class _Tee:
+    def __init__(self, *streams): self.streams = streams
+    def write(self, s):
+        for st in self.streams: st.write(s)
+    def flush(self):
+        for st in self.streams: st.flush()
+
+if args.report is None or args.report == 'auto':
+    _report_path = os.path.join(args.dir, 'text_analysis_report.txt')
+elif args.report in ('', 'stdout', 'none', '-'):
+    _report_path = None
+else:
+    _report_path = args.report
+
+if _report_path:
+    _parent = os.path.dirname(_report_path)
+    if _parent and not os.path.isdir(_parent):
+        os.makedirs(_parent, exist_ok=True)
+    _report_fh = open(_report_path, 'w', encoding='utf-8')
+    sys.stdout = _Tee(sys.__stdout__, _report_fh)
 
 try:
     import openpmd_viewer as ov

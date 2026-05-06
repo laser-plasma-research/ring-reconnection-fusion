@@ -1,0 +1,176 @@
+# ============================================================================
+# program_config_paper3.yaml
+# Paper 3 — Fuel rod density scaling
+#
+# REDO of original Paper 3: original 7 runs invalidated by dt convention bug.
+# Highest density (5e26) had geometry-broken runs (ring outside domain).
+#
+# Restructured Paper 3 (5 runs):
+#   - 3 rod-density points: 5e23, 5e24, 5e25 (all within 9.6 mm domain)
+#   - 1 fuel comparison: ammonia-borane at 5e24 vs default p11b
+#   - 1 no-inserts baseline
+#   - DROP 5e26 — needs bigger domain, defer to separate program
+#
+# Launch: python run_all.py --config program_config_paper3.yaml \
+#                           --paper A3 --stages simulation,analysis
+#
+# Critical assumption: simulation script has 2π patch (v12.14.1+).
+# ============================================================================
+
+program:
+  name: "Paper 3 — Rod Fuel Density Scaling in Ring-Reconnection p-11B"
+  org: "laser-plasma-research"
+  contact_email: "bworth@substrate.ai"
+  default_max_parallel: 1
+  default_mpi_ranks: 1
+
+  paths:
+    program_root: "~/laser-plasma-research"
+    shared: "~/laser-plasma-research/shared"
+    runs_root: "./runs"
+    simulation_script: "simulation/pb11_ring_reconnection_v12_fuel_center_outer.py"
+
+  drafting:
+    default_model: "claude-opus-4-6"
+    default_language: "en"
+    api_key_env_var: "ANTHROPIC_API_KEY"
+    max_retries: 2
+    api_timeout_seconds: 300
+    budget:
+      per_run_usd: 5.0
+      per_day_usd: 10.0
+      per_month_usd: 50.0
+      hard_stop_at_pct: 100
+      warn_at_pct: 70
+
+  citation:
+    default_target_count: 28
+    minimum_acceptable_count: 20
+    crossref_api: "https://api.crossref.org"
+    openalex_api: "https://api.openalex.org"
+    semantic_scholar_api: "https://api.semanticscholar.org"
+    verification_strict: true
+
+
+journal_profiles:
+  "Physics of Plasmas":
+    publisher: "AIP Publishing"
+    latex_class: "revtex4-2"
+    citation_style: "aps"
+    bibtex_style: "apsrev4-2"
+    typical_words: 6500
+    max_words: 12000
+    figure_format: "pdf"
+    column_width_mm: 89
+    audience: "plasma physicists familiar with PIC simulation methods"
+    requires_competing_interests: true
+    requires_data_availability: true
+    requires_orcid: true
+
+
+# ============================================================================
+# PAPERS
+# ============================================================================
+
+papers:
+  - id: A3
+    paper_num: 3
+    tag: p3_rod_density_scaling
+    label: "Rod fuel density scaling (3 densities + ammonia-borane + no-inserts)"
+    title: "Rod fuel density scaling in ring-reconnection p-11B fusion: alpha yield response across two density decades with corrected timestepping"
+    repo_name: "worth-paper-A3-rod-density"
+    target_journal: "Physics of Plasmas"
+    status: planned
+
+    simulation:
+      command: "python simulation/pb11_ring_reconnection_v12_fuel_center_outer.py {test_flag}"
+      depends_on: []                       # Paper 3 doesn't reuse Paper 1/2 runs
+      estimated_runtime_hours: 50
+      output_dir_pattern: "runs/paper{paper_num:02d}/{mode}/{sub_tag}"
+
+      # 5 sequential runs:
+      #   1. Rod 5e23 p11b      → low rod density anchor
+      #   2. Rod 5e24 p11b      → mid rod density anchor (matches base)
+      #   3. Rod 5e25 p11b      → high rod density anchor (10× base)
+      #   4. Rod 5e24 ammonia   → fuel comparison at mid density
+      #   5. No-inserts         → baseline reference (no rod, just base fuel)
+      # All use base fuel p11b at 5e24 (consistent with Paper 1 LD).
+      sub_jobs:
+        - sub_tag: "p3_rod_5e23_p11b"
+          flags_override: "--base-fuel p11b --base-density 5e24 --b-seed 85 --fuel-rod --rod-fuel p11b --rod-density 5e23 --diag-profile production --late-diag-period 3000 --nx 1024 --nz 1024 --lx-min-um 9600"
+          note: "Low rod density (5e23, 0.1× base). 25 t_ci, 17 dumps. ~10h."
+
+        - sub_tag: "p3_rod_5e24_p11b"
+          flags_override: "--base-fuel p11b --base-density 5e24 --b-seed 85 --fuel-rod --rod-fuel p11b --rod-density 5e24 --diag-profile production --late-diag-period 3000 --nx 1024 --nz 1024 --lx-min-um 9600"
+          note: "Mid rod density (5e24, 1× base). 25 t_ci, 17 dumps. ~10h."
+
+        - sub_tag: "p3_rod_5e25_p11b"
+          flags_override: "--base-fuel p11b --base-density 5e24 --b-seed 85 --fuel-rod --rod-fuel p11b --rod-density 5e25 --diag-profile production --late-diag-period 3000 --nx 1024 --nz 1024 --lx-min-um 9600"
+          note: "High rod density (5e25, 10× base). 25 t_ci, 17 dumps. ~10h."
+
+        - sub_tag: "p3_rod_5e24_ammonia"
+          flags_override: "--base-fuel p11b --base-density 5e24 --b-seed 85 --fuel-rod --rod-fuel ammonia_borane --rod-density 5e24 --diag-profile production --late-diag-period 3000 --nx 1024 --nz 1024 --lx-min-um 9600"
+          note: "Fuel comparison: ammonia-borane rod at 5e24 vs p11b at same density. ~10h."
+
+        - sub_tag: "p3_no_inserts"
+          flags_override: "--base-fuel p11b --base-density 5e24 --b-seed 85 --diag-profile production --late-diag-period 3000 --nx 1024 --nz 1024 --lx-min-um 9600"
+          note: "Baseline reference — no rod, base fuel only. 25 t_ci, 17 dumps. ~10h."
+
+    analysis:
+      figures:
+        - {name: fig1, type: fig_rod_geometry}
+        - {name: fig2, type: fig_rod_density_yield_scaling}
+        - {name: fig3, type: fig_zone_e95_per_rod_config}
+        - {name: fig4, type: fig_fuel_comparison_p11b_vs_ammonia}
+        - {name: fig5, type: fig_no_inserts_baseline_reference}
+
+    drafting_context:
+      tone: "technical, scaling-study"
+      target_words: 6000
+      headline_finding: "Rod fuel density scaling across two decades (5e23 to 5e25) reveals monotonic increase in alpha yield with rod density; ammonia-borane fuel produces measurable difference vs p11b at matched density"
+
+      key_results_to_emphasize:
+        - "Yield scales monotonically with rod density across 5e23 → 5e25"
+        - "No-inserts baseline establishes rod contribution"
+        - "Ammonia-borane vs p11b at matched density quantifies fuel-chemistry effect"
+
+      framing:
+        problem: "Rod fuel density and chemistry as design parameters for ring-reconnection geometry are not characterized."
+        contribution: "Density scan (3 decades) plus fuel comparison plus baseline reference quantifies scaling and identifies productive operating regime."
+        limitations: "5e26 dropped due to domain-size constraint (ring radius outside box at 9.6 mm); dense-rod regime requires larger-domain follow-up."
+
+      primary_application: "fusion"
+      target_markets: ["fusion energy"]
+      trl_level: 3
+      industry_context: "Establishes rod-design parameters for experimental validation campaigns."
+
+      keywords: ["rod fuel", "density scaling", "ammonia-borane", "ring-reconnection", "p-11B fusion", "fuel chemistry", "hybrid-PIC"]
+      subject_classifications: ["physics.plasm-ph"]
+
+    citation_strategy:
+      target_count: 28
+      key_authors_to_cite:
+        - "Hora, H."
+        - "Picciotto, A."
+        - "Bonvalet, J."
+        - "Margarone, D."
+        - "Belyaev, V."
+        - "Vay, J.-L."
+      preferred_journals:
+        - "Physics of Plasmas"
+        - "Nuclear Fusion"
+        - "Matter and Radiation at Extremes"
+      required_topic_coverage:
+        - "ammonia-borane fuel for p-11B"
+        - "fuel density scaling in laser-driven fusion"
+        - "ring-reconnection geometry design"
+      verification_strict: true
+
+    deliverables: []
+
+    internal_patent_strategy:
+      defends_claims: [11, 12, 21, 22]
+      defends_levers: []
+      requires_attorney_review_before_public: false
+      attorney_reviewed_date: null
+      notes: "Defends rod-design and fuel-chemistry claims. No new core method beyond Papers 1-2."

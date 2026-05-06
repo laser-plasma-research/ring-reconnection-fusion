@@ -576,6 +576,14 @@ def run_analysis(job, runs_root, dry_run=False):
     """
     Run post-processing analysis for a completed simulation job.
     Saves CSV outputs to the paper directory.
+
+    v2 (2026-04-29): geometry-aware zone analysis.
+      - Reads n_spots, ring_radius_m, spot_radius_m from run_meta.txt
+      - Defines four physical zones: CORE / INNER / X-LINE / SPOT
+      - Replaces the broken hardcoded R_CENTRE=200um centre/outer logic
+        (which sampled a tiny vacuum patch at origin, missing all real physics)
+      - For single-spot mode (R_ring=0), zone analysis is skipped — the geometry
+        does not have a meaningful inner/X-line/spot decomposition.
     """
     paper   = job['paper']
     tag     = job['tag']
@@ -612,54 +620,127 @@ def run_analysis(job, runs_root, dry_run=False):
             shutil.copy2(src, dst)
             log_lines.append(f'Copied: {fname}\n')
 
-    # ── 2. Centre/outer proton energy analysis from openPMD ──────────────────
+    # ── 2. Read geometry from run_meta.txt for zone-aware analysis ──────────
+    meta_path = Path(outdir) / 'run_meta.txt'
+    geom = None
+    if meta_path.exists():
+        try:
+            import configparser
+            meta_lines = open(meta_path).read().splitlines()
+            sec_start = next((i for i, l in enumerate(meta_lines)
+                              if l.strip().startswith('[')), None)
+            if sec_start is not None:
+                cp = configparser.ConfigParser()
+                cp.read_string('\n'.join(meta_lines[sec_start:]))
+                if 'geometry' in cp:
+                    geom = {
+                        'n_spots':       int(cp['geometry'].get('n_spots', '8')),
+                        'ring_radius_m': float(cp['geometry'].get('ring_radius_m', '0')),
+                        'spot_radius_m': float(cp['geometry'].get('spot_radius_m', '0')),
+                    }
+                    log_lines.append(f'Geometry: n_spots={geom["n_spots"]}  '
+                                     f'R_ring={geom["ring_radius_m"]*1e6:.0f}um  '
+                                     f'σ_spot={geom["spot_radius_m"]*1e6:.0f}um\n')
+        except Exception as ex:
+            log_lines.append(f'Geometry read error: {ex}\n')
+
+    # ── 3. Zone-based proton energy analysis from openPMD ───────────────────
     particles_dir = Path(outdir) / 'particles'
     if not particles_dir.exists():
         particles_dir = Path(outdir) / 'particles_early'
 
-    if particles_dir.exists():
-        try:
-            import numpy as np
-            import openpmd_viewer as ov
+    if particles_dir.exists() and geom is not None:
+        N_SPOTS       = geom['n_spots']
+        RING_RADIUS_M = geom['ring_radius_m']
+        SPOT_RADIUS_M = geom['spot_radius_m']
 
-            ts   = ov.OpenPMDTimeSeries(str(particles_dir))
-            PMKG = 1.67262e-27
-            QE   = 1.602e-19
-            C    = 2.998e8
-            KEV  = QE * 1e3
-            RC   = 200e-6
+        if N_SPOTS == 1 or RING_RADIUS_M <= 0:
+            # Single-spot mode: zones do not apply. Log and skip.
+            log_lines.append('Single-spot mode (R_ring=0): zone analysis skipped.\n')
+        else:
+            try:
+                import numpy as np
+                import openpmd_viewer as ov
 
-            rows = []
-            for it in ts.iterations:
-                try:
-                    x, z, ux, uy, uz = ts.get_particle(
-                        ['x', 'z', 'ux', 'uy', 'uz'],
-                        species='proton', iteration=it
-                    )
-                    E   = 0.5 * PMKG * (ux**2 + uy**2 + uz**2) * C**2 / KEV
-                    r   = np.sqrt(x**2 + z**2)
-                    c   = r < RC
-                    t   = ts.t[list(ts.iterations).index(it)] * 1e12
-                    nc  = int(c.sum())
-                    e95c = float(np.percentile(E[c],  95)) if nc > 10 else float('nan')
-                    e95o = float(np.percentile(E[~c], 95)) if (~c).sum() > 10 else float('nan')
-                    ratio = (e95c / e95o) if (e95o > 0 and e95c == e95c) else float('nan')
-                    rows.append([it, f'{t:.2f}', nc,
-                                 f'{e95c:.1f}', f'{e95o:.1f}', f'{ratio:.3f}'])
-                except Exception as ex:
-                    log_lines.append(f'  iter {it} error: {ex}\n')
+                ts   = ov.OpenPMDTimeSeries(str(particles_dir))
+                PMKG = 1.67262e-27
+                QE   = 1.602e-19
+                C    = 2.998e8
+                KEV  = QE * 1e3
 
-            dst = save_csv('centre_outer',
-                           ['iter','t_ps','N_centre','E95c_kev','E95o_kev','ratio'],
-                           rows)
-            log_lines.append(f'Centre/outer CSV: {dst} ({len(rows)} rows)\n')
+                # Zone boundaries — see analyse_preflight_job for shared logic.
+                # CORE  : r < 0.5 * R_ring          (true vacuum core)
+                # INNER : 0.5*R_ring  -> 0.85*R_ring (between core and X-lines)
+                # XLINE : 0.85*R_ring -> 0.95*R_ring (annulus around X-line at R*cos(pi/N))
+                # SPOT  : r >= R_ring - 2*σ          (within 2σ of spots)
+                R_core        = 0.50 * RING_RADIUS_M
+                R_xline_inner = (np.cos(np.pi / N_SPOTS) - 0.05) * RING_RADIUS_M
+                R_xline_outer = (np.cos(np.pi / N_SPOTS) + 0.05) * RING_RADIUS_M
+                R_spot_inner  = RING_RADIUS_M - 2.0 * SPOT_RADIUS_M
 
-        except ImportError:
-            log_lines.append('openpmd_viewer not available — skipping centre/outer\n')
-        except Exception as ex:
-            log_lines.append(f'Centre/outer analysis error: {ex}\n')
+                rows = []
+                for it in ts.iterations:
+                    try:
+                        x, z, ux, uy, uz = ts.get_particle(
+                            ['x', 'z', 'ux', 'uy', 'uz'],
+                            species='proton', iteration=it
+                        )
+                        # u in WarpX is gamma*v/c (dimensionless momentum)
+                        u2    = ux*ux + uy*uy + uz*uz
+                        gamma = np.sqrt(1.0 + u2)
+                        E     = (gamma - 1.0) * PMKG * C * C / KEV
+                        r     = np.sqrt(x**2 + z**2)
+                        in_core  = r < R_core
+                        in_inner = (r >= R_core) & (r < R_xline_inner)
+                        in_xline = (r >= R_xline_inner) & (r <= R_xline_outer)
+                        in_spot  = r >= R_spot_inner
+                        t_ps     = ts.t[list(ts.iterations).index(it)] * 1e12
 
-    # ── 3. B-field evolution ──────────────────────────────────────────────────
+                        def zs(mask):
+                            n = int(mask.sum())
+                            if n < 5:
+                                return n, float('nan'), float('nan')
+                            ek = E[mask]
+                            return n, float(ek.mean()), float(np.percentile(ek, 95))
+
+                        n_c, em_c, e95_c = zs(in_core)
+                        n_i, em_i, e95_i = zs(in_inner)
+                        n_x, em_x, e95_x = zs(in_xline)
+                        n_s, em_s, e95_s = zs(in_spot)
+                        cs = (e95_c / e95_s) if (e95_s > 0 and e95_c == e95_c) else float('nan')
+                        xs = (e95_x / e95_s) if (e95_s > 0 and e95_x == e95_x) else float('nan')
+
+                        rows.append([it, f'{t_ps:.2f}',
+                                     n_c, f'{em_c:.1f}', f'{e95_c:.1f}',
+                                     n_i, f'{em_i:.1f}', f'{e95_i:.1f}',
+                                     n_x, f'{em_x:.1f}', f'{e95_x:.1f}',
+                                     n_s, f'{em_s:.1f}', f'{e95_s:.1f}',
+                                     f'{cs:.4f}', f'{xs:.4f}'])
+                    except Exception as ex:
+                        log_lines.append(f'  iter {it} error: {ex}\n')
+
+                dst = save_csv('zone_analysis',
+                               ['iter', 't_ps',
+                                'N_core',  'Emean_core_kev',  'E95_core_kev',
+                                'N_inner', 'Emean_inner_kev', 'E95_inner_kev',
+                                'N_xline', 'Emean_xline_kev', 'E95_xline_kev',
+                                'N_spot',  'Emean_spot_kev',  'E95_spot_kev',
+                                'core_over_spot', 'xline_over_spot'],
+                               rows)
+                log_lines.append(f'Zone analysis CSV: {dst} ({len(rows)} rows)\n')
+                log_lines.append(f'  Zones: CORE r<{R_core*1e6:.0f}um  '
+                                 f'INNER {R_core*1e6:.0f}-{R_xline_inner*1e6:.0f}um  '
+                                 f'XLINE {R_xline_inner*1e6:.0f}-{R_xline_outer*1e6:.0f}um  '
+                                 f'SPOT r>{R_spot_inner*1e6:.0f}um\n')
+
+            except ImportError:
+                log_lines.append('openpmd_viewer not available — skipping zone analysis\n')
+            except Exception as ex:
+                log_lines.append(f'Zone analysis error: {ex}\n')
+    elif particles_dir.exists() and geom is None:
+        log_lines.append('No geometry from run_meta — zone analysis skipped.\n')
+
+    # ── 4. B-field evolution ──────────────────────────────────────────────────
     fields_dir = Path(outdir) / 'fields'
     if not fields_dir.exists():
         fields_dir = Path(outdir) / 'fields_early'
@@ -692,7 +773,7 @@ def run_analysis(job, runs_root, dry_run=False):
         except Exception as ex:
             log_lines.append(f'B-field analysis error: {ex}\n')
 
-    # ── 4. Write analysis log ─────────────────────────────────────────────────
+    # ── 5. Write analysis log ─────────────────────────────────────────────────
     with open(analysis_log, 'w') as f:
         f.writelines(log_lines)
 
@@ -1199,7 +1280,7 @@ def run_job(job, semaphore, tracker, runs_root, skip_analysis, dry_run, resume,
                     shell=True,
                     stdout=log_fh,
                     stderr=subprocess.STDOUT,
-                    cwd=str(Path(__file__).parent.resolve()),  # experiment dir where script lives
+                    cwd=str(Path(__file__).parent.parent.resolve()),  # program root (parent of simulation/)
                     start_new_session=True,
                 )
                 _register_proc(tag, proc)
@@ -1483,16 +1564,39 @@ def analyse_preflight_job(outdir, tag, base_density=5e24):
             results['b_field_sustained'] = ('SKIP', 'No B-field data')
 
     # ── CHECK 3: No initialization spike ─────────────────────────────────────
+    # v2 (2026-04-29): geometry-aware. Reads run_meta.txt and uses CORE zone
+    # (r < 0.5 * R_ring) instead of the broken hardcoded RC=200um. For
+    # single-spot mode (R_ring=0), falls back to whole-domain spike check.
     pdir = None
     for name in ['particles_early', 'particles']:
         if (outdir / name).exists():
             pdir = outdir / name
             break
 
+    # Read geometry to define the core zone for this run
+    R_core_preflight = None
+    geom_meta = outdir / 'run_meta.txt'
+    if geom_meta.exists():
+        try:
+            import configparser as _cp
+            _ml = open(geom_meta).read().splitlines()
+            _ss = next((i for i, l in enumerate(_ml)
+                        if l.strip().startswith('[')), None)
+            if _ss is not None:
+                _cfg = _cp.ConfigParser()
+                _cfg.read_string('\n'.join(_ml[_ss:]))
+                if 'geometry' in _cfg:
+                    _ns = int(_cfg['geometry'].get('n_spots', '8'))
+                    _rr = float(_cfg['geometry'].get('ring_radius_m', '0'))
+                    if _ns >= 2 and _rr > 0:
+                        R_core_preflight = 0.5 * _rr
+        except Exception:
+            pass
+
     spike_count = 0
     n_valid     = 0
     n_centre_max = 0
-    PMKG = 1.67262e-27; QE = 1.602e-19; C = 2.998e8; KEV = QE*1e3; RC = 200e-6
+    PMKG = 1.67262e-27; QE = 1.602e-19; C = 2.998e8; KEV = QE*1e3
 
     if pdir:
         try:
@@ -1501,9 +1605,16 @@ def analyse_preflight_job(outdir, tag, base_density=5e24):
                 try:
                     x, z, ux, uy, uz = ts.get_particle(
                         ['x','z','ux','uy','uz'], species='proton', iteration=it)
-                    E   = 0.5*PMKG*(ux**2+uy**2+uz**2)*C**2/KEV
-                    r   = np.sqrt(x**2+z**2)
-                    c   = r < RC
+                    # u in WarpX is gamma*v/c (dimensionless momentum)
+                    u2    = ux*ux + uy*uy + uz*uz
+                    gamma = np.sqrt(1.0 + u2)
+                    E     = (gamma - 1.0) * PMKG * C * C / KEV
+                    r     = np.sqrt(x**2+z**2)
+                    if R_core_preflight is not None:
+                        c = r < R_core_preflight
+                    else:
+                        # Single-spot or no ring: whole-domain check
+                        c = np.ones_like(r, dtype=bool)
                     nc  = int(c.sum())
                     n_centre_max = max(n_centre_max, nc)
                     if nc > 10:
@@ -1531,6 +1642,9 @@ def analyse_preflight_job(outdir, tag, base_density=5e24):
         results['no_spike'] = ('WARN', 'No valid centre particle data')
 
     # ── CHECK 4: Particles reaching centre ───────────────────────────────────
+    # Note: at very early times (preflight = 25 steps) most particles are still
+    # in their initialization positions, so low N_centre is normal. The check
+    # only fails hard if N_centre stays at zero throughout.
     if n_centre_max > 100:
         results['n_centre'] = ('PASS', f'N_centre max = {n_centre_max:,}')
     elif n_centre_max > 0:
@@ -1690,7 +1804,7 @@ def run_preflight(all_jobs, script, runs_root, mpi_ranks, max_parallel,
                         proc = subprocess.Popen(
                             cmd, shell=True,
                             stdout=lf, stderr=subprocess.STDOUT,
-                            cwd=str(Path(__file__).parent.resolve()),  # experiment dir where script lives
+                            cwd=str(Path(__file__).parent.parent.resolve()),  # program root (parent of simulation/)
                             start_new_session=True,
                         )
                         _register_proc(tag, proc)

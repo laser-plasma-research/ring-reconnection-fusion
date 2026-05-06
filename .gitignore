@@ -38,3 +38,13 @@ deliverables_preflight/
 papers/
 shared/usage_log.json
 shared/cache/
+
+# Additional rules (added during cleanup)
+archived_runs/
+*.bak
+*.local_backup
+*.tar.gz
+*.tar
+*.zip
+simulation/* copy.py
+simulation/*\(1\).py

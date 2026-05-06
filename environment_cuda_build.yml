@@ -1,0 +1,102 @@
+name: plasma
+# ============================================================================
+# Build-from-source environment for WarpX-CUDA on Linux + NVIDIA GPU
+#
+# This environment provides the BUILD dependencies (compilers, cmake, MPI,
+# CUDA runtime, FFTW, etc.) needed to compile WarpX from source with CUDA
+# support. WarpX itself is NOT installed via conda — it's compiled from
+# source via build_warpx_cuda.sh.
+#
+# After this env is created and WarpX is built, this same env is used at
+# runtime — pywarpx is installed into it via pip.
+#
+# Designed for: Ubuntu 22.04+ with NVIDIA GPU (driver >= 525, supports CUDA 12+)
+# ============================================================================
+
+channels:
+  - conda-forge
+
+dependencies:
+  - python=3.11
+
+  # ── Build toolchain ───────────────────────────────────────────────────────
+  - cmake>=3.24
+  - make
+  - ninja
+  - pkg-config
+  - ccache
+  - git
+  # Pin GCC so AMReX/WarpX have a known-good host compiler for nvcc
+  - gcc=12.*
+  - gxx=12.*
+  - gcc_linux-64=12.*
+  - gxx_linux-64=12.*
+  - libgcc-ng=*
+  - libstdcxx-ng=*
+
+  # ── CUDA toolkit (matches H100 driver ~13.0; we pin 12.6 which is widely supported) ──
+  # Note: cuda-version is a virtual package; conda picks compatible nvcc/runtime.
+  # If 12.6 is unavailable, conda can negotiate a different supported version.
+  - cuda-version=12.6
+  - cuda-toolkit
+  - cuda-nvcc
+  - cuda-cudart
+  - cuda-cudart-dev
+  - cuda-nvrtc-dev
+  - cuda-cccl
+  - cuda-libraries
+  - cuda-libraries-dev
+  - libcurand-dev
+  - libcublas-dev
+  - libcusparse-dev
+  - libcusolver-dev
+  - libcufft-dev
+
+  # ── MPI (required by WarpX for hybrid-PIC and multi-rank runs) ────────────
+  - openmpi
+  - mpi4py
+
+  # ── Numerical libraries WarpX links against ───────────────────────────────
+  - fftw
+  - blaspp
+  - lapackpp
+  - boost
+  - hdf5
+  - adios2
+  - openpmd-api
+
+  # ── Python deps used by WarpX PICMI interface ─────────────────────────────
+  - numpy
+  - scipy
+  - matplotlib
+  - sympy
+  - mpmath
+  - periodictable
+  - pyyaml
+  - dill
+  - tqdm
+  - psutil
+  - requests
+  - jinja2
+  - h5py
+  - openpmd-viewer
+
+  # ── Build helpers ─────────────────────────────────────────────────────────
+  - pip
+  - python-build
+  - packaging
+  - setuptools
+  - wheel
+  - virtualenv
+  - picmistandard
+
+  # ── Pip-installed packages ────────────────────────────────────────────────
+  - pip:
+      - anthropic
+      - annotated-types
+      - pydantic
+      - pydantic-core
+      - distro
+      - docstring-parser
+      - jiter
+      - typing-inspection

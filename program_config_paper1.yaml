@@ -1,0 +1,197 @@
+# ============================================================================
+# program_config_paper1.yaml
+# Paper 1 — Static p-11B comparative yield analysis
+#
+# Schema matches pb11_run_all_papers.py make_jobs_from_yaml() and
+# orchestrator.config.load_config().
+#
+# Launch: python run_all.py --config program_config_paper1.yaml \
+#                           --paper A1 --stages simulation,analysis
+#
+# Manual cleanup between runs (NOT handled by orchestrator):
+#   After each sub_job analysis completes, delete the particles/ subdir:
+#     rm -rf runs/paper01/prod/<sub_tag>/particles
+#
+# Critical assumption: simulation script has 2π patch (v12.14.1+).
+# Verify simulation/pb11_ring_reconnection_v12_fuel_center_outer.py
+# line 739-740 reads:
+#   time_step_s  = DT * 2.0 * np.pi / omega_ci
+#   total_time_s = LT * 2.0 * np.pi / omega_ci
+# ============================================================================
+
+program:
+  name: "Paper 1 — Ring-Reconnection Comparative Yield Baseline"
+  org: "laser-plasma-research"
+  contact_email: "bworth@substrate.ai"
+  default_max_parallel: 1
+  default_mpi_ranks: 1
+
+  paths:
+    program_root: "~/laser-plasma-research"
+    shared: "~/laser-plasma-research/shared"
+    runs_root: "./runs"
+    simulation_script: "simulation/pb11_ring_reconnection_v12_fuel_center_outer.py"
+
+  drafting:
+    default_model: "claude-opus-4-6"
+    default_language: "en"
+    api_key_env_var: "ANTHROPIC_API_KEY"
+    max_retries: 2
+    api_timeout_seconds: 300
+    budget:
+      per_run_usd: 5.0
+      per_day_usd: 10.0
+      per_month_usd: 50.0
+      hard_stop_at_pct: 100
+      warn_at_pct: 70
+
+  citation:
+    default_target_count: 30
+    minimum_acceptable_count: 20
+    crossref_api: "https://api.crossref.org"
+    openalex_api: "https://api.openalex.org"
+    semantic_scholar_api: "https://api.semanticscholar.org"
+    verification_strict: true
+
+
+journal_profiles:
+  "Physics of Plasmas":
+    publisher: "AIP Publishing"
+    latex_class: "revtex4-2"
+    citation_style: "aps"
+    bibtex_style: "apsrev4-2"
+    typical_words: 6500
+    max_words: 12000
+    figure_format: "pdf"
+    column_width_mm: 89
+    audience: "plasma physicists familiar with PIC simulation methods"
+    requires_competing_interests: true
+    requires_data_availability: true
+    requires_orcid: true
+
+
+# ============================================================================
+# PAPERS
+# ============================================================================
+# Single paper per file; the list-of-papers schema is preserved so the
+# orchestrator's `for paper_def in config.get('papers', []):` loop works.
+
+papers:
+  - id: A1
+    paper_num: 1
+    tag: p1_static_pb11_comparative
+    label: "Static ring-reconnection comparative yield (1024² + 512² convergence)"
+    title: "Ring-reconnection geometry for p-11B fusion: comparative alpha yield analysis vs published laser-driven experimental records"
+    repo_name: "worth-paper-A1-comparative-yield"
+    target_journal: "Physics of Plasmas"
+    status: in_progress
+
+    simulation:
+      # Base command. The orchestrator appends `--outdir {outdir}` automatically
+      # using output_dir_pattern below. {test_flag} is empty in production.
+      # All run-specific flags are in each sub_job's flags_override.
+      # NOTE: uses `python` (plasma conda env) — NOT python3 (system).
+      command: "python simulation/pb11_ring_reconnection_v12_fuel_center_outer.py {test_flag}"
+      depends_on: []
+      estimated_runtime_hours: 25
+      output_dir_pattern: "runs/paper{paper_num:02d}/{mode}/{sub_tag}"
+
+      sub_jobs:
+        # ── HEADLINE 1024² runs ────────────────────────────────────────
+        - sub_tag: "p1_high_density_v3"
+          flags_override: "--base-fuel ch_bn --base-density 5e25 --b-seed 85 --diag-profile production --late-diag-period 3000 --nx 1024 --nz 1024 --lx-min-um 9600"
+          note: "High-β regime (ch_bn 5e25, β≈137) — PERLA-class. 25 t_ci, 17 dumps. ~10h."
+
+        - sub_tag: "p1_low_density_v3"
+          flags_override: "--base-fuel p11b --base-density 5e24 --b-seed 85 --diag-profile production --late-diag-period 3000 --nx 1024 --nz 1024 --lx-min-um 9600"
+          note: "Low-β regime (p11b 5e24, β≈4) — well-resolved baseline. 25 t_ci, 17 dumps. ~10h."
+
+        # ── DOWNWARD GRID-CONVERGENCE runs (512²) ─────────────────────
+        - sub_tag: "p1_high_density_v3_512"
+          flags_override: "--base-fuel ch_bn --base-density 5e25 --b-seed 85 --diag-profile production --late-diag-period 750 --nx 512 --nz 512 --lx-min-um 9600"
+          note: "HD convergence at 512² (dx=18.75µm, ~1.3 cells/d_i). ~2.5h."
+
+        - sub_tag: "p1_low_density_v3_512"
+          flags_override: "--base-fuel p11b --base-density 5e24 --b-seed 85 --diag-profile production --late-diag-period 750 --nx 512 --nz 512 --lx-min-um 9600"
+          note: "LD convergence at 512² (dx=18.75µm, ~5.4 cells/d_i — published-precedent range). ~2.5h."
+
+    analysis:
+      figures:
+        - {name: fig1, type: fig_ring_geometry}
+        - {name: fig2, type: fig_bfield_evolution}
+        - {name: fig3, type: fig_reconnection_rate_timeseries}
+        - {name: fig4, type: fig_zone_e95_evolution}
+        - {name: fig5, type: fig_alpha_yield_comparison}
+        - {name: fig6, type: fig_grid_convergence}
+
+    drafting_context:
+      tone: "technical, comparative, conservative on absolute claims"
+      target_words: 6500
+      headline_finding: "Hybrid-PIC simulation projects alpha yield/joule comparable to published experimental records at driver class ~3 orders of magnitude more accessible by wall-plug energy and rep rate"
+
+      key_results_to_emphasize:
+        - "Two regime case studies: low-β (p11b, β≈4) shows reconnection signature; high-β (ch_bn, β≈137) shows bulk-thermal regime"
+        - "Reconnection rate measured directly via E_y at X-line probes, cross-referenced against WarpX D-D Harris reference"
+        - "Grid convergence demonstrated at 1024² ↔ 512² for both regimes"
+        - "Comparative analysis: yield/joule + engineering-accessibility multipliers vs Bonvalet 2023, Margarone-class, Picciotto 2014"
+
+      framing:
+        problem: "Published laser-driven p-11B experiments require kJ-class single-pulse PW facilities. Driver accessibility limits commercial scaling."
+        contribution: "8-spot ring-reconnection geometry at 5 J fiber-laser scale projects competitive yield/J at 10⁵× lower wall-plug energy per shot."
+        limitations: "2D Cartesian; hybrid-PIC fluid electrons; 25 cyclotron periods; 1024² gives dx/d_i ≈ 11 (LD, well-resolved) and ≈ 3 (HD, marginal at X-line)."
+
+      primary_application: "fusion"
+      target_markets: ["fusion energy", "compact alpha sources for medical use"]
+      trl_level: 3
+      industry_context: "Independent demonstration vs HB11 (avalanche), Marvel (nanostructure), TAE (FRC)."
+
+      keywords: ["p-11B fusion", "ring geometry", "magnetic reconnection", "hybrid-PIC", "non-thermal ion acceleration", "Biermann battery", "aneutronic fusion", "WarpX", "alpha yield comparative", "fiber laser fusion driver"]
+      subject_classifications: ["physics.plasm-ph", "physics.acc-ph"]
+
+    citation_strategy:
+      target_count: 32
+      key_authors_to_cite:
+        - "Bonvalet, J."
+        - "Consoli, F."
+        - "Margarone, D."
+        - "Picciotto, A."
+        - "Hora, H."
+        - "Labaune, C."
+        - "Belyaev, V."
+        - "Roth, M."
+        - "Daido, H."
+        - "Vay, J.-L."
+        - "Drake, J."
+        - "Birn, J."
+        - "Rider, T."
+        - "Nevins, W."
+        - "Le, A."
+        - "Magee, R."
+      preferred_journals:
+        - "Physics of Plasmas"
+        - "Matter and Radiation at Extremes"
+        - "Nature Communications"
+        - "Physical Review Letters"
+        - "Nuclear Fusion"
+      required_topic_coverage:
+        - "p-11B fusion cross-sections and reaction channels"
+        - "magnetic reconnection ion acceleration"
+        - "hybrid-PIC simulation methodology"
+        - "Biermann battery field generation"
+        - "non-thermal fusion arguments (Rider, Nevins)"
+        - "experimental p-11B alpha yield records"
+        - "fiber laser scaling and wall-plug efficiency"
+        - "WarpX hybrid-PIC reference implementations"
+      verification_strict: true
+
+    # User has explicitly disabled drafting/deliverables for this program.
+    # Use `--stages simulation,analysis` to skip these. Empty list satisfies
+    # schema validation without producing any AI-drafted output.
+    deliverables: []
+
+    internal_patent_strategy:
+      defends_claims: [1, 2, 3, 21]
+      defends_levers: []
+      requires_attorney_review_before_public: false
+      attorney_reviewed_date: null
+      notes: "Foundation paper. Defends core ring-reconnection method claim."

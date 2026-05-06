@@ -21,13 +21,17 @@ program:
   name: "Ring-Reconnection Plasma Research"
   org: "laser-plasma-research"
   contact_email: "bworth@substrate.ai"  # for OpenAlex/Crossref polite-pool routing
-  default_max_parallel: 2
+  # IMPORTANT: each WarpX run needs ~80-90 GB on M2 Max (8 ranks × ~10 GB each).
+  # Running 2 in parallel needs ~170 GB which exceeds 96 GB physical RAM and
+  # causes massive swap thrashing. Keep this at 1 unless on bigger hardware.
+  default_max_parallel: 1
   default_mpi_ranks: 8
   
   paths:
     program_root: "~/research/laser-plasma-research"
     shared: "~/research/laser-plasma-research/shared"
     runs_root: "./runs"
+    simulation_script: "simulation/pb11_ring_reconnection_v12_fuel_center_outer.py"
   
   # ---- Visibility classification ----
   # Generated .gitignore is derived from these patterns.
@@ -1054,20 +1058,34 @@ papers:
   - id: A1
     paper_num: 1
     tag: p1_static_p11b
-    label: "Static ring, p-11B base only — 300T Biermann seed"
-    title: "Static p-11B ring-geometry magnetic reconnection: 2D hybrid-PIC baseline"
+    label: "Static ring methodology — low + high density at v12.14 Harris topology"
+    title: "Static p-11B ring-geometry magnetic reconnection: 2D hybrid-PIC baseline across density regimes"
     repo_name: "worth-paper-A1-static-pb11"
     target_journal: "Physics of Plasmas"
     status: draft
     
     simulation:
-      command: "mpirun -n {mpi_ranks} python3 pb11_ring_reconnection_v12_fuel_center_outer.py --base-fuel p11b --b-seed 300 --outdir {outdir} {test_flag}"
+      # Multi-run methodology paper at v12.14 (Harris By topology).
+      # Two density regimes at B=85T (matches the original 696-ps successful run):
+      #   - low density (p11b 5e24): well-conditioned, β≈4
+      #   - high density (ch_bn 5e25): PERLA-class, β≈11
+      # 10000 steps each: low ≈ 1.23 ns simulated, high ≈ 0.39 ns simulated.
+      # Both should reach saturation comfortably.
+      # When sub_jobs have flags_override (as below), this template is unused.
+      # The orchestrator builds: mpirun -n N python3 <script> {test_flag} {flags_override} --outdir {outdir}
+      command: "mpirun -n {mpi_ranks} python3 simulation/pb11_ring_reconnection_v12_fuel_center_outer.py --b-seed 85 --max-steps 10000 --diag-profile production --outdir {outdir} {test_flag}"
       depends_on: []
-      estimated_runtime_hours: 18
-      output_dir_pattern: "runs/paper{paper_num:02d}/{mode}/{tag}"
+      estimated_runtime_hours: 24
+      output_dir_pattern: "runs/paper{paper_num:02d}/{mode}/{sub_tag}"
+      
+      sub_jobs:
+        - {sub_tag: "p1_low_density",  flags_override: "--base-fuel p11b  --base-density 5e24 --b-seed 85 --max-steps 10000 --diag-profile production", note: "Low density (p11b 5e24, β≈4) — well-conditioned baseline"}
+        - {sub_tag: "p1_high_density", flags_override: "--base-fuel ch_bn --base-density 5e25 --b-seed 85 --max-steps 10000 --diag-profile production", note: "High density (ch_bn 5e25, β≈11) — PERLA-class regime"}
     
+    # Analysis is handled by the orchestrator's built-in run_analysis()
+    # which produces <tag>_zone_analysis.csv and <tag>_bfield.csv per run.
+    # No external analysis command needed.
     analysis:
-      command: "python3 analyse_pb11.py --dir {outdir}"
       figures:
         - {name: fig1, type: fig_ring_geometry}
         - {name: fig2, type: fig_bfield_evolution}
@@ -1162,7 +1180,7 @@ papers:
     # Paper 2 has multiple simulation configurations; the main runner
     # iterates over them. Listed as separate sub-jobs under simulation.
     simulation:
-      command: "mpirun -n {mpi_ranks} python3 pb11_ring_reconnection_v12_fuel_center_outer.py --rotate --base-fuel p11b --freq {freq} --b-seed {b_seed} --outdir {outdir} {test_flag}"
+      command: "mpirun -n {mpi_ranks} python3 simulation/pb11_ring_reconnection_v12_fuel_center_outer.py --rotate --base-fuel p11b --freq {freq} --b-seed {b_seed} --outdir {outdir} {test_flag}"
       depends_on: [p1_static_p11b]
       estimated_runtime_hours: 18
       output_dir_pattern: "runs/paper{paper_num:02d}/{mode}/{sub_tag}"
@@ -1277,7 +1295,7 @@ papers:
     status: draft
     
     simulation:
-      command: "mpirun -n {mpi_ranks} python3 pb11_ring_reconnection_v12_fuel_center_outer.py --base-fuel p11b --b-seed 300 --outdir {outdir} {test_flag}"
+      command: "mpirun -n {mpi_ranks} python3 simulation/pb11_ring_reconnection_v12_fuel_center_outer.py --base-fuel p11b --b-seed 300 --outdir {outdir} {test_flag}"
       depends_on: [p1_static_p11b]
       estimated_runtime_hours: 18
       output_dir_pattern: "runs/paper{paper_num:02d}/{mode}/{sub_tag}"
@@ -1367,7 +1385,7 @@ papers:
     status: draft
     
     simulation:
-      command: "mpirun -n {mpi_ranks} python3 pb11_ring_reconnection_v12_fuel_center_outer.py --base-fuel p11b --b-seed 300 --outdir {outdir} {test_flag}"
+      command: "mpirun -n {mpi_ranks} python3 simulation/pb11_ring_reconnection_v12_fuel_center_outer.py --base-fuel p11b --b-seed 300 --outdir {outdir} {test_flag}"
       depends_on: [p1_static_p11b]
       estimated_runtime_hours: 18
       output_dir_pattern: "runs/paper{paper_num:02d}/{mode}/{sub_tag}"
@@ -1445,7 +1463,7 @@ papers:
     status: draft
     
     simulation:
-      command: "mpirun -n {mpi_ranks} python3 pb11_ring_reconnection_v12_fuel_center_outer.py --b-seed 300 --outdir {outdir} {test_flag}"
+      command: "mpirun -n {mpi_ranks} python3 simulation/pb11_ring_reconnection_v12_fuel_center_outer.py --b-seed 300 --outdir {outdir} {test_flag}"
       depends_on: [p1_static_p11b]
       estimated_runtime_hours: 18
       output_dir_pattern: "runs/paper{paper_num:02d}/{mode}/{sub_tag}"
@@ -1527,7 +1545,7 @@ papers:
     status: draft
     
     simulation:
-      command: "mpirun -n {mpi_ranks} python3 pb11_ring_reconnection_v12_fuel_center_outer.py --b-seed 300 --outdir {outdir} {test_flag}"
+      command: "mpirun -n {mpi_ranks} python3 simulation/pb11_ring_reconnection_v12_fuel_center_outer.py --b-seed 300 --outdir {outdir} {test_flag}"
       depends_on: []
       estimated_runtime_hours: 18
       output_dir_pattern: "runs/paper{paper_num:02d}/{mode}/{sub_tag}"
@@ -1695,7 +1713,7 @@ papers:
     status: draft
     
     simulation:
-      command: "mpirun -n {mpi_ranks} python3 pb11_ring_reconnection_v12_fuel_center_outer.py --base-fuel p11b --fuel-rod --rod-fuel ammonia_borane --rod-density 5e24 --outdir {outdir} {test_flag}"
+      command: "mpirun -n {mpi_ranks} python3 simulation/pb11_ring_reconnection_v12_fuel_center_outer.py --base-fuel p11b --fuel-rod --rod-fuel ammonia_borane --rod-density 5e24 --outdir {outdir} {test_flag}"
       depends_on: [p3_rod_ammonia]
       estimated_runtime_hours: 18
       output_dir_pattern: "runs/paper{paper_num:02d}/{mode}/{sub_tag}"
@@ -1769,7 +1787,7 @@ papers:
     status: draft
     
     simulation:
-      command: "mpirun -n {mpi_ranks} python3 pb11_ring_reconnection_v12_fuel_center_outer.py --base-fuel p11b --fuel-rod --rod-fuel ammonia_borane --rod-density 5e24 --fuel-ring-full --ring-fuel p11b --ring-density 5e24 --outdir {outdir} {test_flag}"
+      command: "mpirun -n {mpi_ranks} python3 simulation/pb11_ring_reconnection_v12_fuel_center_outer.py --base-fuel p11b --fuel-rod --rod-fuel ammonia_borane --rod-density 5e24 --fuel-ring-full --ring-fuel p11b --ring-density 5e24 --outdir {outdir} {test_flag}"
       depends_on: []
       estimated_runtime_hours: 18
     
@@ -1842,7 +1860,7 @@ papers:
     status: draft
     
     simulation:
-      command: "mpirun -n {mpi_ranks} python3 pb11_ring_reconnection_v12_fuel_center_outer.py --rotate --freq 500e6 --base-fuel lib_equal --fuel-rod --rod-fuel lib_equal --rod-density 5e24 --fuel-ring-full --ring-fuel lib_equal --ring-density 5e24 --outdir {outdir} {test_flag}"
+      command: "mpirun -n {mpi_ranks} python3 simulation/pb11_ring_reconnection_v12_fuel_center_outer.py --rotate --freq 500e6 --base-fuel lib_equal --fuel-rod --rod-fuel lib_equal --rod-density 5e24 --fuel-ring-full --ring-fuel lib_equal --ring-density 5e24 --outdir {outdir} {test_flag}"
       depends_on: [p9_static_experimental]
       estimated_runtime_hours: 22
     

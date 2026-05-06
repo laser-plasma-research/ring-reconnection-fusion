@@ -86,6 +86,90 @@ from orchestrator.citation_engine import CitationEngine
 
 
 # ---------------------------------------------------------------------------
+# Environment cleanup (--clean flag)
+# ---------------------------------------------------------------------------
+
+# Directories that --clean wipes. Defensive: only these specific names.
+# Each must be relative to PROGRAM_ROOT.
+CLEAN_TARGETS = ['runs', 'papers', 'simulation/runs']
+
+
+def _handle_clean(args):
+    """
+    Wipe the directories listed in CLEAN_TARGETS before the orchestrator
+    starts. Refuses to delete anything outside PROGRAM_ROOT. Prompts for
+    confirmation unless --yes was given.
+
+    Called from main() when --clean is on the CLI.
+    """
+    import shutil
+
+    # Find what would be deleted and how much disk it consumes
+    candidates = []
+    for rel in CLEAN_TARGETS:
+        path = (PROGRAM_ROOT / rel).resolve()
+        # Defensive check: must still be under PROGRAM_ROOT after resolve
+        try:
+            path.relative_to(PROGRAM_ROOT.resolve())
+        except ValueError:
+            print(f"  REFUSING to delete {path} (outside program root)",
+                  file=sys.stderr)
+            continue
+        if path.exists():
+            try:
+                size_bytes = sum(f.stat().st_size for f in path.rglob('*') if f.is_file())
+                size_str = _human_size(size_bytes)
+            except Exception:
+                size_str = '?'
+            candidates.append((rel, path, size_str))
+
+    if not candidates:
+        print("--clean: nothing to remove (all target directories already absent)")
+        return
+
+    # Show what will be deleted
+    print()
+    print("=" * 70)
+    print("  --clean will REMOVE the following directories:")
+    print("=" * 70)
+    total_disk = 0
+    for rel, path, size_str in candidates:
+        print(f"    {rel:25s}  {size_str:>10s}    {path}")
+    print("=" * 70)
+
+    # Confirm unless --yes
+    if not args.yes:
+        try:
+            answer = input("  Type 'yes' to confirm: ").strip().lower()
+        except (KeyboardInterrupt, EOFError):
+            print("\n  Aborted.", file=sys.stderr)
+            sys.exit(1)
+        if answer != 'yes':
+            print("  Aborted.", file=sys.stderr)
+            sys.exit(1)
+
+    # Delete
+    print()
+    for rel, path, _ in candidates:
+        try:
+            shutil.rmtree(path)
+            print(f"    ✓ removed {rel}")
+        except Exception as e:
+            print(f"    ✗ failed to remove {rel}: {e}", file=sys.stderr)
+            sys.exit(1)
+    print()
+
+
+def _human_size(n_bytes: int) -> str:
+    """Format bytes as human-readable string."""
+    for unit in ('B', 'KB', 'MB', 'GB', 'TB'):
+        if n_bytes < 1024:
+            return f"{n_bytes:.1f} {unit}"
+        n_bytes /= 1024
+    return f"{n_bytes:.1f} PB"
+
+
+# ---------------------------------------------------------------------------
 # Stage runners
 # ---------------------------------------------------------------------------
 
@@ -145,14 +229,50 @@ def run_simulation_stage(
     # Quiet mode — pb11 stops printing to terminal
     pb11.set_quiet_mode(True)
 
+    # Initialise GPU pool inside pb11 if --gpus-per-host > 0. Each parallel
+    # simulation job will be pinned to a distinct GPU via CUDA_VISIBLE_DEVICES.
+    gpus = getattr(args, 'gpus_per_host', 0) or 0
+    if gpus > 0:
+        pb11._gpu_pool = pb11._GPUPool(gpus)
+        display.add_event(f'GPU pool: {gpus} GPUs (CUDA_VISIBLE_DEVICES pinning active)')
+
     # Register callback for paper completion
     if on_paper_complete:
         pb11.set_on_complete_callback(on_paper_complete)
 
-    # Build tracker and progress report (from pb11 module)
+    # Build tracker and progress report (from pb11 module).
+    #
+    # PROBLEM: pb11.ProgressTracker auto-paints a fullscreen dashboard
+    # every 5 seconds via os.system('clear') + print, which clobbers the
+    # orchestrator's own dashboard. The orchestrator owns the display.
+    #
+    # SOLUTION: Use a no-op tracker shim with the same interface that
+    # pb11.run_job calls (start, stop, update, _render). This keeps state
+    # tracking working while suppressing the screen-clearing dashboard.
     ordered_jobs = pb11.resolve_order(all_jobs)
-    tracker = pb11.ProgressTracker(ordered_jobs)
-    tracker.start()
+
+    class _QuietTracker:
+        """Drop-in replacement for pb11.ProgressTracker that doesn't render."""
+        def __init__(self, jobs):
+            self.jobs = jobs
+            self.lock = threading.Lock()
+            self.start_t = time.time()
+        def start(self):
+            pass   # no-op — orchestrator owns the display
+        def stop(self):
+            pass
+        def update(self, tag, **kwargs):
+            with self.lock:
+                for j in self.jobs:
+                    if j['tag'] == tag:
+                        j.update(kwargs)
+                        break
+        def _render(self, final=False):
+            pass
+
+    import threading
+    tracker = _QuietTracker(ordered_jobs)
+    tracker.start()   # no-op, but keeps interface symmetric
 
     # Wire pb11's progress to our display by registering a callback...
     # but pb11 doesn't have such a hook. We'll let pb11 write to its
@@ -163,7 +283,6 @@ def run_simulation_stage(
     # The simplest path: import the run_job_pool inline-defined in
     # pb11.main(). But that's not exposed. Re-implement here.
 
-    import threading
     semaphore = threading.Semaphore(args.max_parallel or cfg.default_max_parallel)
     threads = {}
     completed = set()
@@ -445,6 +564,10 @@ def main():
                         help='Skip jobs whose outputs already exist')
     parser.add_argument('--max-parallel', type=int, default=None,
                         help='Max simultaneous simulations (default from config)')
+    parser.add_argument('--gpus-per-host', type=int, default=0,
+                        help='Number of GPUs available on this host (default: 0 = '
+                             'no CUDA_VISIBLE_DEVICES pinning). Set to 2 on a 2-GPU '
+                             'instance to pin each parallel job to a distinct GPU.')
     parser.add_argument('--mpi-ranks', type=int, default=None,
                         help='MPI ranks per simulation job (default from config)')
     parser.add_argument('--runs-dir', type=str, default=None,
@@ -461,8 +584,17 @@ def main():
                         help='Force stub handlers (no API calls; for testing)')
     parser.add_argument('--env-file', type=str, default=None,
                         help='Path to .env file (default: shared/.env)')
+    parser.add_argument('--clean', action='store_true',
+                        help='Delete runs/, papers/, simulation/runs/ before '
+                             'starting. Asks for confirmation unless --yes is given.')
+    parser.add_argument('--yes', '-y', action='store_true',
+                        help='Auto-confirm prompts (e.g. for --clean)')
 
     args = parser.parse_args()
+
+    # ---- Handle --clean BEFORE loading config or doing anything else ----
+    if args.clean:
+        _handle_clean(args)
 
     # ---- Load config ----
     try:
@@ -550,6 +682,33 @@ def main():
     # ---- Set up shutdown coordinator ----
     shutdown = ShutdownCoordinator(force_exit_after_seconds=15.0)
     shutdown.install_signal_handlers()
+
+    # ---- Register pb11 simulation cleanup (PRIORITY 1 — runs first) ----
+    # The orchestrator's signal handler overrides pb11_run_all_papers.py's own
+    # signal handler. Without this cleanup callback, pb11's _stop_event never
+    # gets set when Ctrl-C is pressed, so its polling loops keep running and
+    # mpirun + 8 worker processes survive.
+    #
+    # This function calls into pb11's already-correct _kill_all_procs(), which:
+    #   1. Sets _stop_event to unblock pb11's polling loops
+    #   2. Sends SIGTERM to each tracked process group (kills mpirun + workers)
+    #   3. Falls back to pkill by name for any orphans
+    #   4. Sends SIGKILL after a grace period to anything still alive
+    #
+    # Priority 1 ensures this runs BEFORE drafting_pool (priority 8) and
+    # progress_display (priority 10) so MPI dies before the rest of cleanup.
+    def _stop_pb11_simulations():
+        try:
+            import pb11_run_all_papers as pb11
+            pb11._kill_all_procs(signum=None, frame=None)
+        except ImportError:
+            pass
+        except Exception as e:
+            print(f"\n  WARN: pb11 cleanup encountered error: {e}",
+                  file=sys.stderr, flush=True)
+
+    shutdown.register_cleanup('pb11_simulations', _stop_pb11_simulations,
+                              priority=1)
 
     # ---- Set up API integration (only if drafting is happening) ----
     claude_client = None
