@@ -1,0 +1,83 @@
+# =============================================================================
+# .dockerignore — files NOT to send to the Docker build daemon
+#
+# Smaller build context = faster builds. We send only what's actually
+# COPY'd in the Dockerfile. Everything else is wasted bandwidth.
+# =============================================================================
+
+# Data and outputs (large, never wanted in image)
+runs/
+batch_logs/
+logs_v07_archive/
+*.log
+**/*.log
+
+# Backup and transient files
+*.bak
+*.bak.*
+*.bak_*
+**/*.bak
+**/*.bak.*
+Backtrace.*
+warpx_used_inputs
+_diag_orch.log
+
+# Migration scripts that are already applied
+apply_*.py
+apply_*.sh
+v15_paper3_patch.py
+paper3_jobs.py
+run_all.py
+run_papers_A1_A2_A3.sh
+
+# Orchestrators — these run on local Mac, never inside the container
+stage_a_paper01.py
+stage_a_paper3.py
+
+# Superseded simulation versions
+simulation/pb11_ring_reconnection_v12_*
+
+# Tools that are local-machine helpers, not container-runtime
+tools/apply_*.py
+tools/patch_v15_*.py
+
+# Version control and IDE noise
+.git/
+.gitignore
+.DS_Store
+**/.DS_Store
+__pycache__/
+**/__pycache__/
+*.pyc
+**/*.pyc
+.ipynb_checkpoints/
+**/.ipynb_checkpoints/
+
+# Editor / OS noise
+*.swp
+*.swo
+.vscode/
+.idea/
+
+# Existing tarballs from previous deploys
+*.tar.gz
+
+# Latex build artifacts
+papers/*/paper/*.pdf
+papers/*/paper/*.aux
+papers/*/paper/*.bbl
+papers/*/paper/*.blg
+papers/*/paper/*.out
+papers/*/companion/private/
+papers/*/ip_analysis/
+
+# Sensitive
+**/.env
+**/usage_log.json
+
+# The macOS env file — this container is Linux only
+environment_macos.yml
+
+# Docker artifacts themselves
+Dockerfile.bak*
+.dockerignore.bak*

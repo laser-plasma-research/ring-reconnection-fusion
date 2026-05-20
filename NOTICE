@@ -1,0 +1,22 @@
+Laser-driven p-11B aneutronic fusion via 8-spot ring magnetic reconnection
+Copyright 2026 James B. Worth
+
+This product includes software developed by James B. Worth.
+
+Author: James B. Worth (ORCID: 0009-0005-5000-9497)
+Contact: brenworth@gmail.com
+
+This research code uses or builds on the following open-source projects:
+
+  WarpX (https://ecp-warpx.github.io/)
+    Copyright 2018-2026, the WarpX Community.
+    Licensed under the BSD-3-Clause-LBNL License.
+
+  AMReX (https://amrex-codes.github.io/amrex/)
+    Copyright 2017-2026, the AMReX Community.
+    Licensed under the BSD-3-Clause-LBNL License.
+
+These dependencies are not redistributed as part of this work;
+they are linked at runtime by the simulation pipeline and must be
+installed separately. See their respective LICENSE files for the
+terms governing their use.

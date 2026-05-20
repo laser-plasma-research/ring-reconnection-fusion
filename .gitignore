@@ -48,3 +48,4 @@ archived_runs/
 *.zip
 simulation/* copy.py
 simulation/*\(1\).py
+program_config_paper3.yaml

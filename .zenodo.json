@@ -1,0 +1,32 @@
+{
+  "title": "Laser-driven p-¹¹B aneutronic fusion via 8-spot ring magnetic reconnection — simulation and analysis suite",
+  "description": "Computational research code for a tabletop-scale (≈5 J, 85 T) laser-driven p-¹¹B aneutronic fusion configuration based on 8-spot ring-geometry magnetic reconnection. Includes the WarpX/AMReX hybrid-PIC simulation driver, multi-tier orchestration pipeline (UUF factorial decomposition, rod-density linearity check, 512² grid-convergence partners), spatially-resolved first-transit fusion accounting analysis, per-zone diagnostics, and figure-generation scripts. The configuration produces 8 anti-parallel reconnection X-lines whose outflows converge on the ring centre, driving non-thermal proton acceleration above the p-¹¹B fusion threshold without bulk thermal heating.",
+  "creators": [
+    {
+      "name": "Worth, James B.",
+      "orcid": "0009-0005-5000-9497",
+      "affiliation": "Independent Researcher"
+    }
+  ],
+  "upload_type": "software",
+  "access_right": "open",
+  "license": "Apache-2.0",
+  "language": "eng",
+  "keywords": [
+    "aneutronic fusion",
+    "proton-boron fusion",
+    "p-B11",
+    "magnetic reconnection",
+    "laser-plasma interaction",
+    "hybrid particle-in-cell",
+    "WarpX",
+    "Biermann battery",
+    "non-thermal acceleration",
+    "computational plasma physics",
+    "ring geometry",
+    "X-line reconnection"
+  ],
+  "version": "1.0.0",
+  "notes": "Initial public release. Paper 3 v0.8 Option G geometry: outer annulus at 3.7 mm (centre) gives a 600 µm clean buffer past the spot 2σ tail. Paper 1 anchors (ring radius 2.4 mm, spot σ 300 µm) preserved.",
+  "related_identifiers": []
+}

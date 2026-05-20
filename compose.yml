@@ -1,0 +1,83 @@
+# =============================================================================
+# compose.yml — convenience configurations for ring-reconnection-fusion
+#
+# Use: docker compose run <service> [extra args]
+# =============================================================================
+
+services:
+
+  # Interactive shell inside the container with plasma env activated
+  # and runs/ volume mounted for output persistence
+  shell:
+    image: ring-reconnection-fusion:v1.0.0
+    container_name: rrf-shell
+    runtime: nvidia
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    volumes:
+      - ./runs:/work/runs
+    stdin_open: true
+    tty: true
+    command: /bin/bash
+
+  # Run a single sim job (override the args at invocation time)
+  # docker compose run sim -- --test --ring-radius-um 2400 ...
+  sim:
+    image: ring-reconnection-fusion:v1.0.0
+    container_name: rrf-sim
+    runtime: nvidia
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    volumes:
+      - ./runs:/work/runs
+    entrypoint:
+      - conda
+      - run
+      - --no-capture-output
+      - -n
+      - plasma
+      - python
+      - simulation/pb11_ring_reconnection_v15_pulsed.py
+
+  # Run the analysis chain on a specific run directory
+  # docker compose run analysis -- runs/p3_ring_only_uuf
+  analysis:
+    image: ring-reconnection-fusion:v1.0.0
+    container_name: rrf-analysis
+    runtime: nvidia
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    volumes:
+      - ./runs:/work/runs
+    entrypoint:
+      - bash
+      - analysis_scripts/run_full_analysis.sh
+
+  # GPU diagnostic sanity check
+  gpu-check:
+    image: ring-reconnection-fusion:v1.0.0
+    container_name: rrf-gpu-check
+    runtime: nvidia
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    command: nvidia-smi
