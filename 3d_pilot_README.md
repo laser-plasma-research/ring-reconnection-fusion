@@ -82,7 +82,7 @@ pip install "pyvista[all]"   # ~200 MB
 ## Sanity check (~2 hr wall, ~3 GB disk)
 
 ```bash
-ssh substrate-gpu 'cd ~/laser-plasma-research && \
+ssh <GPU_HOST> 'cd ~/laser-plasma-research && \
   python pb11_ring_3d_pilot_v1.py \
     --nx 64 --nz 64 --ny 16 \
     --max-steps 333 --dump-period 50 \
@@ -99,7 +99,7 @@ finishes cleanly, the production pilot will run.
 field-dump iteration to support the isosurface animation:
 
 ```bash
-ssh substrate-gpu 'cd ~/laser-plasma-research && \
+ssh <GPU_HOST> 'cd ~/laser-plasma-research && \
   nohup python pb11_ring_3d_pilot_v1.py \
     --max-steps 1340 --dump-period 50 \
     --diag-profile custom \
@@ -116,13 +116,13 @@ to `runs/pb11_3d_pilot_*`.
 
 Monitor:
 ```bash
-ssh substrate-gpu 'cd ~/laser-plasma-research && tail -f 3d_pilot_*.log | grep "Step "'
+ssh <GPU_HOST> 'cd ~/laser-plasma-research && tail -f 3d_pilot_*.log | grep "Step "'
 ```
 
 ## Run all diagnostics + animations (~15-30 minutes)
 
 ```bash
-ssh substrate-gpu 'cd ~/laser-plasma-research && \
+ssh <GPU_HOST> 'cd ~/laser-plasma-research && \
   python pb11_3d_run_all_diagnostics.py \
     --run-dir runs/pb11_3d_pilot_<timestamp> \
     --compare-2d-zone-report runs/p1_ld_512_4500_ultrafine/zone_report.txt'

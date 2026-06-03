@@ -1,0 +1,53 @@
+{
+  "comment": "position jitter, uniform-in-disk parameter 20 um (resulting RMS shift 12.5 um, max 19.5 um), seed 20260606. Realistic-range experimental jitter sweep; see gen_jitter_specs_realistic.py.",
+  "spots": [
+    {
+      "enabled": true,
+      "amp_scale": 1.0,
+      "dx_um": 5.610093523039693,
+      "dz_um": -14.78202807770813
+    },
+    {
+      "enabled": true,
+      "amp_scale": 1.0,
+      "dx_um": -6.689754471730214,
+      "dz_um": 2.3555226333597825
+    },
+    {
+      "enabled": true,
+      "amp_scale": 1.0,
+      "dx_um": 5.35817864007715,
+      "dz_um": -8.31161604711682
+    },
+    {
+      "enabled": true,
+      "amp_scale": 1.0,
+      "dx_um": -6.03880809907206,
+      "dz_um": 5.596750329885101
+    },
+    {
+      "enabled": true,
+      "amp_scale": 1.0,
+      "dx_um": -3.2026430786015783,
+      "dz_um": -5.313827448644794
+    },
+    {
+      "enabled": true,
+      "amp_scale": 1.0,
+      "dx_um": -9.209040022434703,
+      "dz_um": 14.207823364938134
+    },
+    {
+      "enabled": true,
+      "amp_scale": 1.0,
+      "dx_um": -19.51297692237338,
+      "dz_um": -0.26315265543493466
+    },
+    {
+      "enabled": true,
+      "amp_scale": 1.0,
+      "dx_um": -8.34894022122098,
+      "dz_um": 3.484780188168389
+    }
+  ]
+}

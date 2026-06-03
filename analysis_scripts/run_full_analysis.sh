@@ -33,7 +33,7 @@ if [ ! -d "$RUN_DIR/particles" ]; then
     exit 1
 fi
 
-cd ~/laser-plasma-research
+cd /work
 
 ANALYSIS_DIR="analysis_scripts"
 STAGES_TOTAL=8

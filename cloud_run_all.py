@@ -37,7 +37,7 @@ import yaml
 # Constants
 # ============================================================================
 
-SSH_HOST          = "substrate-gpu"
+SSH_HOST          = os.environ.get("GPU_HOST", "gpu-node")
 CLOUD_ROOT        = "~/laser-plasma-research"
 CONDA_ENV         = "plasma"
 CONDA_INIT        = f"source ~/miniforge3/etc/profile.d/conda.sh && conda activate {CONDA_ENV}"
@@ -337,7 +337,7 @@ def check_cloud_environment(run_dir: Optional[str] = None) -> bool:
     rc, out, _ = ssh_raw("pgrep -af 'python.*ring_reconnection' | grep -v 'bash -c' || true")
     if out.strip():
         log(f"Stale simulation process found:\n  {out}", "ERR")
-        log("Kill it with: ssh substrate-gpu 'pkill -f ring_reconnection'", "WARN")
+        log("Kill it with: ssh gpu-node 'pkill -f ring_reconnection'", "WARN")
         return False
     log("No stale simulation processes", "OK")
 
@@ -349,7 +349,7 @@ def check_cloud_environment(run_dir: Optional[str] = None) -> bool:
     rc, out, _ = ssh_raw("pgrep -af 'run_full_analysis|visualize_all|pb11_phase|pb11_fusion' | grep -v 'bash -c' | grep -v grep || true")
     if out.strip():
         log(f"Stale analysis process found:\n  {out}", "WARN")
-        log("Run: ssh substrate-gpu 'bash ~/laser-plasma-research/check_analysis_status.sh --clean'", "WARN")
+        log("Run: ssh gpu-node 'bash ~/laser-plasma-research/check_analysis_status.sh --clean'", "WARN")
         return False
     log("No stale analysis processes", "OK")
 

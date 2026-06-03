@@ -1,0 +1,53 @@
+{
+  "comment": "beam on/off: dropped spots [0] (4+3 single-gap, Bonasera analog)",
+  "spots": [
+    {
+      "enabled": false,
+      "amp_scale": 1.0,
+      "dx_um": 0.0,
+      "dz_um": 0.0
+    },
+    {
+      "enabled": true,
+      "amp_scale": 1.0,
+      "dx_um": 0.0,
+      "dz_um": 0.0
+    },
+    {
+      "enabled": true,
+      "amp_scale": 1.0,
+      "dx_um": 0.0,
+      "dz_um": 0.0
+    },
+    {
+      "enabled": true,
+      "amp_scale": 1.0,
+      "dx_um": 0.0,
+      "dz_um": 0.0
+    },
+    {
+      "enabled": true,
+      "amp_scale": 1.0,
+      "dx_um": 0.0,
+      "dz_um": 0.0
+    },
+    {
+      "enabled": true,
+      "amp_scale": 1.0,
+      "dx_um": 0.0,
+      "dz_um": 0.0
+    },
+    {
+      "enabled": true,
+      "amp_scale": 1.0,
+      "dx_um": 0.0,
+      "dz_um": 0.0
+    },
+    {
+      "enabled": true,
+      "amp_scale": 1.0,
+      "dx_um": 0.0,
+      "dz_um": 0.0
+    }
+  ]
+}

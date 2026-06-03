@@ -6,8 +6,8 @@ authors:
   - family-names: "Worth"
     given-names: "James B."
     orcid: "https://orcid.org/0009-0005-5000-9497"
-    email: "bworth@substrate.ai"
-    affiliation: "Substrate AI, Valencia, Spain"
+    email: "brenworth@gmail.com"
+    affiliation: "Independent Researcher, Valencia, Spain"
 abstract: >-
   Hybrid particle-in-cell (PIC) simulations of laser-driven plasma physics
   with focus on ring-geometry magnetic reconnection. Includes the simulation
@@ -27,5 +27,5 @@ keywords:
   - non-thermal acceleration
 license: Apache-2.0
 url: "https://github.com/laser-plasma-research"
-date-released: 2026-04-27
-version: "0.1.0-step3"
+date-released: 2026-06-03
+version: 1.2.2

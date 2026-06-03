@@ -1,0 +1,53 @@
+{
+  "comment": "position jitter, uniform-in-disk RMS 300 um, seed 20260528",
+  "spots": [
+    {
+      "enabled": true,
+      "amp_scale": 1.0,
+      "dx_um": -38.36210628065094,
+      "dz_um": -30.502630312480132
+    },
+    {
+      "enabled": true,
+      "amp_scale": 1.0,
+      "dx_um": -220.6619051182419,
+      "dz_um": 50.662294473151256
+    },
+    {
+      "enabled": true,
+      "amp_scale": 1.0,
+      "dx_um": 126.49028681001738,
+      "dz_um": 125.459067832269
+    },
+    {
+      "enabled": true,
+      "amp_scale": 1.0,
+      "dx_um": 203.68228695299362,
+      "dz_um": 78.08626118607891
+    },
+    {
+      "enabled": true,
+      "amp_scale": 1.0,
+      "dx_um": -52.36730038763187,
+      "dz_um": 243.6187585712871
+    },
+    {
+      "enabled": true,
+      "amp_scale": 1.0,
+      "dx_um": 162.77614941332052,
+      "dz_um": 134.42704232532566
+    },
+    {
+      "enabled": true,
+      "amp_scale": 1.0,
+      "dx_um": 54.36614205351182,
+      "dz_um": -170.9182356381224
+    },
+    {
+      "enabled": true,
+      "amp_scale": 1.0,
+      "dx_um": -274.6086952256086,
+      "dz_um": -47.35368149072811
+    }
+  ]
+}

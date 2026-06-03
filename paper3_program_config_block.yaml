@@ -1,0 +1,191 @@
+  # ----------------------------------------------------------------------
+  # PAPER 3 — Multi-zone target with central rod and outer overshoot catcher
+  # 
+  # Demonstrates that adding a central rod catcher (b18h22, H:B≈1.22:1) and
+  # an outer overshoot catcher (b11_target, pure ¹¹B) to the Paper 1 LD
+  # pitcher (p11b at 5e24 m⁻³) produces additive multi-zone fusion gain.
+  # 
+  # All runs are static (no rotation); modulation belongs to A2. Pitcher
+  # matches Paper 1 LD exactly so the gain comparison is single-variable
+  # and reviewer-defensible: Δ = E_full − E_baseline attributable solely to
+  # catcher additions, not to a different pitcher composition.
+  # 
+  # The 2×2 production matrix decomposes the gain:
+  #   Δ_rod         = E(rod_only)          − E(ring_only)
+  #   Δ_outer       = E(outer_only)        − E(ring_only)
+  #   Δ_both        = E(rod_plus_outer)    − E(ring_only)        [HEADLINE]
+  #   Δ_outer_added = E(rod_plus_outer)    − E(rod_only)         [additive evidence]
+  # 
+  # Paper 3 uses v15 (pulsed-drive variant) for its full --rod-* / --ring-*
+  # / --outer-* / --fuel-* flag set. The v15 script must have the Paper 3
+  # patch applied (adds rod_radius_m, outer_radius_m, outer_thickness_m,
+  # lx_m, lz_m, nx, nz to run_meta.txt [geometry] block) — apply via
+  # v15_paper3_patch.py before launching.
+  # ----------------------------------------------------------------------
+  - id: A3
+    paper_num: 3
+    tag: p3_multizone_pb11
+    label: "Multi-zone target: rod + outer overshoot catcher (graded composition)"
+    title: "Composition-graded multi-zone target architecture for laser-driven p-11B fusion: 2D hybrid-PIC demonstration of additive rod and outer-catcher gain"
+    repo_name: "worth-paper-A3-multizone-pb11"
+    target_journal: "Physics of Plasmas"
+    status: draft
+    
+    simulation:
+      # All Paper 3 runs use v15 with --diag-profile test (dense early, no
+      # late) and --max-steps 18000 (~2.7 ns simulated at LD).  The four
+      # Tier 1 production runs and two Tier 2 convergence runs differ only
+      # in which fuel zones are enabled and at what grid resolution.
+      # 
+      # Geometry: 8 spots at R=2400 µm, σ_spot=300 µm (matches Paper 1).
+      # Rod: σ=250 µm at origin (up from v15 default 75 µm — captures
+      # most of the X-line outflow angular spread).
+      # Outer catcher: R=3500 µm, σ=300 µm (past the 3σ outer edge of
+      # pitcher spots; well inside the ±4800 µm box with 1300 µm buffer
+      # to the periodic edge).
+      # 
+      # The command template is provided for completeness but every Paper
+      # 3 sub-job uses flags_override so the template's flag list is not
+      # used.  The base mpirun + script invocation IS used; that's why
+      # this template still hardcodes the v15 script path.
+      command: "mpirun -n {mpi_ranks} python3 simulation/pb11_ring_reconnection_v15_pulsed.py --base-fuel p11b --base-density 5e24 --b-seed 85 --n-spots 8 --lx-min-um 9600 --nx 256 --nz 256 --diag-profile test --max-steps 18000 --outdir {outdir} {test_flag}"
+      depends_on: []
+      estimated_runtime_hours: 22
+      output_dir_pattern: "runs/paper{paper_num:02d}/{mode}/{sub_tag}"
+      
+      sub_jobs:
+        # ── Tier 0 preflight ────────────────────────────────────────────
+        # 5K-step smoke test that the new geometry fields land in
+        # run_meta.txt and the multi-region density expression evaluates.
+        # Run this FIRST and inspect run_meta.txt before launching Tier 1.
+        - {sub_tag: "p3_preflight",
+           flags_override: "--base-fuel p11b --base-density 5e24 --rod-fuel b18h22 --rod-density 5e25 --rod-radius-um 250 --fuel-rod --ring-fuel b11_target --ring-density 5e25 --outer-radius-um 3500 --outer-thickness-um 300 --fuel-ring-full --b-seed 85 --n-spots 8 --lx-min-um 9600 --nx 256 --nz 256 --diag-profile preflight --max-steps 5000",
+           note: "Tier 0 preflight (5K steps, ~5 min) — validates v15 patch"}
+        
+        # ── Tier 1 production matrix (4 runs at 256², ~6 hr total) ─────
+        - {sub_tag: "p3_ring_only",
+           flags_override: "--base-fuel p11b --base-density 5e24 --b-seed 85 --n-spots 8 --lx-min-um 9600 --nx 256 --nz 256 --diag-profile test --max-steps 18000",
+           note: "Tier 1: pitcher only (Paper 1 LD baseline reproduction at v15)"}
+        
+        - {sub_tag: "p3_rod_only",
+           flags_override: "--base-fuel p11b --base-density 5e24 --rod-fuel b18h22 --rod-density 5e25 --rod-radius-um 250 --fuel-rod --b-seed 85 --n-spots 8 --lx-min-um 9600 --nx 256 --nz 256 --diag-profile test --max-steps 18000",
+           note: "Tier 1: pitcher + central rod catcher (no outer)"}
+        
+        - {sub_tag: "p3_outer_only",
+           flags_override: "--base-fuel p11b --base-density 5e24 --ring-fuel b11_target --ring-density 5e25 --outer-radius-um 3500 --outer-thickness-um 300 --fuel-ring-full --b-seed 85 --n-spots 8 --lx-min-um 9600 --nx 256 --nz 256 --diag-profile test --max-steps 18000",
+           note: "Tier 1: pitcher + outer overshoot catcher (no rod)"}
+        
+        - {sub_tag: "p3_rod_plus_outer",
+           flags_override: "--base-fuel p11b --base-density 5e24 --rod-fuel b18h22 --rod-density 5e25 --rod-radius-um 250 --fuel-rod --ring-fuel b11_target --ring-density 5e25 --outer-radius-um 3500 --outer-thickness-um 300 --fuel-ring-full --b-seed 85 --n-spots 8 --lx-min-um 9600 --nx 256 --nz 256 --diag-profile test --max-steps 18000",
+           note: "Tier 1 HEADLINE: full graded multi-zone target (rod + outer)"}
+        
+        # ── Tier 2 convergence (2 runs at 512², ~14 hr total) ───────────
+        - {sub_tag: "p3_ring_only_512",
+           flags_override: "--base-fuel p11b --base-density 5e24 --b-seed 85 --n-spots 8 --lx-min-um 9600 --nx 512 --nz 512 --diag-profile test --max-steps 18000",
+           note: "Tier 2: ring-only baseline at 512² for convergence check"}
+        
+        - {sub_tag: "p3_rod_plus_outer_512",
+           flags_override: "--base-fuel p11b --base-density 5e24 --rod-fuel b18h22 --rod-density 5e25 --rod-radius-um 250 --fuel-rod --ring-fuel b11_target --ring-density 5e25 --outer-radius-um 3500 --outer-thickness-um 300 --fuel-ring-full --b-seed 85 --n-spots 8 --lx-min-um 9600 --nx 512 --nz 512 --diag-profile test --max-steps 18000",
+           note: "Tier 2: headline configuration at 512² for convergence check"}
+        
+        # ── Tier 3 sensitivity check (optional, requires future v15 flag) ──
+        # NOTE: --T-ion-ev does not currently exist as a v15 flag.  This
+        # sub-job is staged for when the flag is added (one-line argparse
+        # addition).  Until then, this run will use the default Ti=100 eV
+        # and the sub-tag is misleading — comment out the entry or skip
+        # the run when launching.  The flag entry below is otherwise
+        # identical to p3_rod_plus_outer.
+        - {sub_tag: "p3_rod_plus_outer_ti30",
+           flags_override: "--base-fuel p11b --base-density 5e24 --rod-fuel b18h22 --rod-density 5e25 --rod-radius-um 250 --fuel-rod --ring-fuel b11_target --ring-density 5e25 --outer-radius-um 3500 --outer-thickness-um 300 --fuel-ring-full --b-seed 85 --n-spots 8 --lx-min-um 9600 --nx 256 --nz 256 --diag-profile test --max-steps 18000",
+           note: "Tier 3 OPTIONAL: Ti=30 eV sensitivity (requires --T-ion-ev flag, not yet present)"}
+    
+    # The orchestrator's built-in run_analysis() produces the standard
+    # zone analysis and B-field CSVs.  Paper 3-specific analysis (six-zone
+    # breakdown with rod/outer separation, first-transit fusion accounting
+    # with wrap correction) is produced by two additional scripts staged
+    # in analysis_scripts/.  Run after the orchestrator completes:
+    #
+    #   for d in runs/paper03/static/p3_*; do
+    #     python3 analysis_scripts/pb11_zone_analysis_paper3.py --run-dir $d
+    #     python3 analysis_scripts/pb11_first_transit_fusion.py --run-dir $d
+    #   done
+    analysis:
+      figures:
+        - {name: fig1, type: fig_ring_geometry}
+        - {name: fig2, type: fig_bfield_evolution}
+        - {name: fig3, type: fig_centre_outer_energy}
+        - {name: fig4, type: fig_proton_energy_distribution}
+        # Paper 3-specific figures produced from analysis_scripts/ outputs;
+        # add custom figure types when the figure registry is extended.
+        # Until then these are produced manually from the CSV outputs.
+    
+    drafting_context:
+      tone: "technical, single-variable comparison framing, conservative on absolute gain claims"
+      target_words: 7000
+      headline_finding: "Adding a central rod catcher and outer overshoot catcher to the Paper 1 LD pitcher produces measurable additive multi-zone fusion gain via geometrically distinct proton populations"
+      
+      key_results_to_emphasize:
+        - "Δ_rod from p3_rod_only − p3_ring_only: rod-only fusion contribution"
+        - "Δ_outer from p3_outer_only − p3_ring_only: outer-only contribution"
+        - "Δ_outer_added from p3_rod_plus_outer − p3_rod_only: additive overshoot contribution on top of rod"
+        - "Convergence: gain ratio (rod_plus_outer / ring_only) at 256² vs 512² differs by <10%"
+        - "First-transit accounting (wrap-corrected) gives a conservative gain bound"
+      
+      framing:
+        problem: "Paper 1 demonstrates a non-thermal proton population in the convergence zone but the integrated p-11B fusion yield is limited by the small effective boron areal density traversed by inflowing protons. Multi-zone composition-graded targets (claim 26 of the underlying patent) propose to multiply yield by adding catcher zones tuned for primary capture (rod at convergence) and secondary capture (outer ring for overshoot)."
+        contribution: "We demonstrate via 2D hybrid-PIC that adding a central b18h22 rod (H:B≈1.22:1) at r<250 µm and an outer b11_target overshoot catcher at R=3500 µm to the Paper 1 LD pitcher (p11b at 5e24 m⁻³) produces additive multi-zone fusion gain. The four-cell decomposition (ring_only, rod_only, outer_only, rod_plus_outer) attributes the gain to rod and outer separately, with the additive term Δ_outer_added confirming the two zones capture geometrically distinct proton populations rather than competing for the same flux."
+        limitations: "Collisionless hybrid-PIC (no Coulomb stopping); 2D Cartesian; periodic boundaries (handled via per-particle first-transit accounting that excludes wrap-induced re-crossings); stopping-range correction applied as analytic post-processing rather than self-consistently in the simulation; no experimental validation."
+      
+      primary_application: "fusion"
+      target_markets: ["fusion energy", "compact alpha source"]
+      trl_level: 3
+      industry_context: "Multi-zone target architecture is a near-term experimental embodiment achievable with current target-fabrication techniques; capillary catchers, graded-composition shells, and outer ¹¹B annuli all exist in the laser-plasma literature."
+      
+      keywords: ["p-11B fusion", "multi-zone target", "ring reconnection", "overshoot catcher", "composition-graded fuel", "octadecaborane", "boron-11 ceramic", "hybrid-PIC", "WarpX", "first-transit accounting"]
+      subject_classifications: ["physics.plasm-ph"]
+    
+    citation_strategy:
+      target_count: 28
+      key_authors_to_cite:
+        - "Hora, H."           # avalanche & catcher concepts
+        - "Labaune, C."        # pre-ionization mechanism (Labaune et al. 2013)
+        - "Picciotto, A."      # 2014 first p-11B observation
+        - "Margarone, D."      # multi-zone targetry, p-11B experiments
+        - "Belyaev, V."        # X-line acceleration theory
+        - "Roth, M."           # laser-driven ion acceleration
+        - "Vay, J.-L."         # WarpX framework
+        - "Drake, J."          # reconnection physics
+        - "Rider, T."          # bremsstrahlung-limit thermodynamic argument
+        - "Nevins, W."         # advanced fuels, bremsstrahlung extension
+        - "Bonasera, A."       # p-11B experimental results
+      preferred_journals:
+        - "Physics of Plasmas"
+        - "Nature Communications"
+        - "Physical Review Letters"
+        - "Nuclear Fusion"
+        - "Plasma Physics and Controlled Fusion"
+      required_topic_coverage:
+        - "p-11B fusion cross-sections and resonances"
+        - "multi-zone target embodiments"
+        - "alpha-to-proton avalanche recycling"
+        - "Labaune-type pre-ionization"
+        - "octadecaborane and decaborane fuel chemistry"
+        - "hybrid-PIC simulation methodology"
+        - "periodic boundary handling in PIC"
+      verification_strict: true
+    
+    deliverables:
+      - manuscript
+      - references
+      - press_release
+      - lay_summary
+      - metadata
+      - potential_claims
+      - uniqueness_review
+    
+    internal_patent_strategy:
+      defends_claims: [26, 27, 28, 29, 30]
+      defends_levers: [2, 3, 4, 5, 8]
+      requires_attorney_review_before_public: true
+      attorney_reviewed_date: null
+      notes: "Defends multi-zone composition-graded target (claim 26) and overshoot catcher (claim 26(c)). Pre-ionization (claim 27) and avalanche recycling (lever 7) cited as enabling mechanisms but not asserted as novel here. Capillary-tube embodiment (claim 28) discussed as proposed experimental realisation. Outer ¹¹B catcher with CR-39 detector (claim 29) framed as natural diagnostic add-on. Attorney review recommended before public release because Paper 3 establishes the multi-zone architecture in print before potential PCT filing."

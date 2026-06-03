@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import os
 """
 stage_a_simple.py — Paper 2 Stage A serial runner.
 
@@ -40,7 +41,7 @@ from pathlib import Path
 # Configuration — edit JOBS to add/remove frequencies
 # ============================================================================
 
-CLOUD_HOST = "substrate-gpu"
+CLOUD_HOST = os.environ.get("GPU_HOST", "gpu-node")
 CLOUD_ROOT = "~/laser-plasma-research"
 CONDA_INIT = "source ~/miniforge3/etc/profile.d/conda.sh && conda activate plasma"
 SIM_SCRIPT = "simulation/pb11_ring_reconnection_v12_fuel_center_outer.py"

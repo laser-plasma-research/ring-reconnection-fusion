@@ -12,10 +12,21 @@ name: plasma
 #   This file is the Linux-CUDA equivalent, with looser version constraints
 #   that let conda resolve the latest compatible builds.
 #
+#   2026-05-31: Added cupy-cuda12x in the pip section.  The simulation
+#   driver pb11_ring_reconnection_v15_pulsed.py (line 2624) reads particle
+#   data off the GPU via cupy and falls back to a numpy managed-memory
+#   path if cupy is missing — but that fallback segfaults at the first
+#   post-step diagnostic dump in v15.3.  Without cupy installed, the sim
+#   crashes at STEP 1.  Image ring-reconnection-fusion:v1.2.0 shipped
+#   without cupy; v1.2.1 layered it on via pip.  Keeping cupy in the
+#   pip section here ensures any future image build (or any future
+#   conda-pack from this env) includes cupy from the start.
+#
 # Usage on a fresh cloud Ubuntu 22.04+ instance:
 #   mamba env create -f environment.yml
 #   mamba activate plasma
 #   python -c "import pywarpx; print(pywarpx.__version__)"
+#   python -c "import cupy; print(cupy.__version__)"
 #
 # To verify CUDA support after install:
 #   ls $(python -c "import pywarpx, os; print(os.path.dirname(pywarpx.__file__))")
@@ -67,8 +78,15 @@ dependencies:
   # ── Build / system utilities ──────────────────────────────────────────────
   - pip
 
-  # ── Pip-installed packages (for orchestrator drafting via Anthropic API) ──
+  # ── Pip-installed packages ────────────────────────────────────────────────
+  # cupy: GPU array library, used by the simulation driver for in-Python
+  #   particle/field reads from device memory.  cupy-cuda12x is the
+  #   prebuilt wheel for CUDA 12.x; matches the toolkit version baked
+  #   into the warpx=*=*cuda* build (CUDA 12.x as of conda-forge build
+  #   strings).  Pip path matches how it was added to v1.2.1 image.
+  # anthropic + supporting libs: orchestrator drafting via Anthropic API.
   - pip:
+      - cupy-cuda12x
       - anthropic
       - annotated-types
       - pydantic

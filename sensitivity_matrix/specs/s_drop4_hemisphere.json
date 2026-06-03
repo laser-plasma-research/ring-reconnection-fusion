@@ -1,0 +1,13 @@
+{
+  "comment": "DIAGNOSTIC TEST: hemisphere drop. Spots 0-3 disabled, 4-7 active. Maximally broken symmetry; no residual fold. Centroid must shift if patch reaches dynamics. Used to disambiguate apparatus-vs-physics for the 4+3 null result.",
+  "spots": [
+    { "enabled": false, "amp_scale": 1.0, "dx_um": 0.0, "dz_um": 0.0 },
+    { "enabled": false, "amp_scale": 1.0, "dx_um": 0.0, "dz_um": 0.0 },
+    { "enabled": false, "amp_scale": 1.0, "dx_um": 0.0, "dz_um": 0.0 },
+    { "enabled": false, "amp_scale": 1.0, "dx_um": 0.0, "dz_um": 0.0 },
+    { "enabled": true,  "amp_scale": 1.0, "dx_um": 0.0, "dz_um": 0.0 },
+    { "enabled": true,  "amp_scale": 1.0, "dx_um": 0.0, "dz_um": 0.0 },
+    { "enabled": true,  "amp_scale": 1.0, "dx_um": 0.0, "dz_um": 0.0 },
+    { "enabled": true,  "amp_scale": 1.0, "dx_um": 0.0, "dz_um": 0.0 }
+  ]
+}

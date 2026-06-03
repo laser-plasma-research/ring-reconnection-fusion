@@ -7,7 +7,7 @@ import sys
 
 # Path to CSV - default to LD long, can override with arg
 csv_path = sys.argv[1] if len(sys.argv) > 1 else \
-    "/home/substrate/laser-plasma-research/runs/p1_ld_512_100k/reconnection_rate_offline.csv"
+    "runs/p1_ld_512_100k/reconnection_rate_offline.csv"
 
 with open(csv_path) as f:
     reader = csv.DictReader(f)

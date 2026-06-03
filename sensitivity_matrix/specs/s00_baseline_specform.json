@@ -1,0 +1,53 @@
+{
+  "comment": "all-unperturbed spec; patch identity check",
+  "spots": [
+    {
+      "enabled": true,
+      "amp_scale": 1.0,
+      "dx_um": 0.0,
+      "dz_um": 0.0
+    },
+    {
+      "enabled": true,
+      "amp_scale": 1.0,
+      "dx_um": 0.0,
+      "dz_um": 0.0
+    },
+    {
+      "enabled": true,
+      "amp_scale": 1.0,
+      "dx_um": 0.0,
+      "dz_um": 0.0
+    },
+    {
+      "enabled": true,
+      "amp_scale": 1.0,
+      "dx_um": 0.0,
+      "dz_um": 0.0
+    },
+    {
+      "enabled": true,
+      "amp_scale": 1.0,
+      "dx_um": 0.0,
+      "dz_um": 0.0
+    },
+    {
+      "enabled": true,
+      "amp_scale": 1.0,
+      "dx_um": 0.0,
+      "dz_um": 0.0
+    },
+    {
+      "enabled": true,
+      "amp_scale": 1.0,
+      "dx_um": 0.0,
+      "dz_um": 0.0
+    },
+    {
+      "enabled": true,
+      "amp_scale": 1.0,
+      "dx_um": 0.0,
+      "dz_um": 0.0
+    }
+  ]
+}

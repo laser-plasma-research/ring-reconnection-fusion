@@ -2,7 +2,7 @@
 
 A complete reference for running, analyzing, transferring, and managing WarpX hybrid-PIC simulations of the 8-spot laser-driven ring reconnection geometry. Covers the simulation pipeline from launch through paper-ready figures.
 
-**Target:** WarpX hybrid-PIC on cloud H100 GPU (`substrate-gpu`), local M2 Max for analysis.
+**Target:** WarpX hybrid-PIC on cloud H100 GPU (`<GPU_HOST>`), local M2 Max for analysis.
 
 **Version:** 1.0 — Initial workflow capture
 
@@ -31,7 +31,7 @@ A complete reference for running, analyzing, transferring, and managing WarpX hy
 
 | Component | Location | Use |
 |---|---|---|
-| Cloud H100 GPU | `ssh substrate-gpu` | All WarpX simulation runs + analysis |
+| Cloud H100 GPU | `ssh <GPU_HOST>` | All WarpX simulation runs + analysis |
 | Mac M2 Max (96 GB) | local | Final figures, paper writing, occasional small analyses |
 
 **Why cloud-only for simulations:** WarpX does not support Apple Metal GPU acceleration. Mac CPU runs are 5-10× slower than H100 GPU. We use the Mac only for storing/viewing analysis outputs.
@@ -127,9 +127,9 @@ The simulation script auto-scales the domain to `120 × d_i` if `--lx-min-um` is
 ### Quick verification of any completed run
 
 ```bash
-ssh substrate-gpu 'source ~/miniforge3/etc/profile.d/conda.sh && conda activate plasma && python3 -c "
+ssh <GPU_HOST> 'source ~/miniforge3/etc/profile.d/conda.sh && conda activate plasma && python3 -c "
 import openpmd_viewer as ov
-ts = ov.OpenPMDTimeSeries(\"/home/substrate/laser-plasma-research/runs/<RUN_NAME>/particles\")
+ts = ov.OpenPMDTimeSeries(\"/home/<USER>/laser-plasma-research/runs/<RUN_NAME>/particles\")
 it = list(ts.iterations)[0]
 x, z = ts.get_particle([\"x\", \"z\"], species=\"proton\", iteration=it)
 print(f\"Domain: {(x.max()-x.min())*1e3:.3f} mm\")
@@ -146,7 +146,7 @@ print(f\"Cell size: {(x.max()-x.min())*1e6/512:.2f} um\")
 ### Standard launch template
 
 ```bash
-ssh substrate-gpu 'source ~/miniforge3/etc/profile.d/conda.sh && conda activate plasma && cd ~/laser-plasma-research && nohup python -u simulation/pb11_ring_reconnection_v12_fuel_center_outer.py \
+ssh <GPU_HOST> 'source ~/miniforge3/etc/profile.d/conda.sh && conda activate plasma && cd ~/laser-plasma-research && nohup python -u simulation/pb11_ring_reconnection_v12_fuel_center_outer.py \
   --base-fuel ch_bn \
   --base-density <DENSITY> \
   --b-seed 85 \
@@ -195,7 +195,7 @@ ssh substrate-gpu 'source ~/miniforge3/etc/profile.d/conda.sh && conda activate 
 Before committing to a long run, do a 50-step preflight to verify geometry and parameters:
 
 ```bash
-ssh substrate-gpu 'source ~/miniforge3/etc/profile.d/conda.sh && conda activate plasma && cd ~/laser-plasma-research && nohup python -u simulation/pb11_ring_reconnection_v12_fuel_center_outer.py \
+ssh <GPU_HOST> 'source ~/miniforge3/etc/profile.d/conda.sh && conda activate plasma && cd ~/laser-plasma-research && nohup python -u simulation/pb11_ring_reconnection_v12_fuel_center_outer.py \
   <YOUR_PARAMS> \
   --max-steps 50 \
   --dump-period 25 \
@@ -206,7 +206,7 @@ ssh substrate-gpu 'source ~/miniforge3/etc/profile.d/conda.sh && conda activate 
 Wait ~5 minutes, then verify:
 
 ```bash
-ssh substrate-gpu 'grep -E "Geometry|d_i=|B-seed|Grid:|particle access probe|SIMULATION COMPLETE|ERROR|Traceback" ~/laser-plasma-research/preflight.log | head -30'
+ssh <GPU_HOST> 'grep -E "Geometry|d_i=|B-seed|Grid:|particle access probe|SIMULATION COMPLETE|ERROR|Traceback" ~/laser-plasma-research/preflight.log | head -30'
 ```
 
 Look for:
@@ -218,7 +218,7 @@ Look for:
 
 If preflight passes, delete it and launch the full run:
 ```bash
-ssh substrate-gpu 'rm -rf ~/laser-plasma-research/runs/<RUN_NAME>_preflight && rm -f ~/laser-plasma-research/preflight.log'
+ssh <GPU_HOST> 'rm -rf ~/laser-plasma-research/runs/<RUN_NAME>_preflight && rm -f ~/laser-plasma-research/preflight.log'
 ```
 
 ---
@@ -228,7 +228,7 @@ ssh substrate-gpu 'rm -rf ~/laser-plasma-research/runs/<RUN_NAME>_preflight && r
 ### Active simulation status
 
 ```bash
-ssh substrate-gpu 'pgrep -af "ring_reconnection" | grep -v grep | head -3; echo ""; tail -20 ~/laser-plasma-research/<RUN_NAME>.log'
+ssh <GPU_HOST> 'pgrep -af "ring_reconnection" | grep -v grep | head -3; echo ""; tail -20 ~/laser-plasma-research/<RUN_NAME>.log'
 ```
 
 **Look for:**
@@ -240,7 +240,7 @@ ssh substrate-gpu 'pgrep -af "ring_reconnection" | grep -v grep | head -3; echo 
 ### Quick "is it done?" check
 
 ```bash
-ssh substrate-gpu 'pgrep -af "ring_reconnection" | grep -v grep || echo "(SIMULATION FINISHED)"; echo ""; tail -10 ~/laser-plasma-research/<RUN_NAME>.log'
+ssh <GPU_HOST> 'pgrep -af "ring_reconnection" | grep -v grep || echo "(SIMULATION FINISHED)"; echo ""; tail -10 ~/laser-plasma-research/<RUN_NAME>.log'
 ```
 
 ### Estimating remaining time
@@ -257,7 +257,7 @@ Typical performance on H100:
 ### Disk usage during run
 
 ```bash
-ssh substrate-gpu 'du -sh ~/laser-plasma-research/runs/<RUN_NAME> 2>/dev/null && df -h ~/laser-plasma-research | head -2'
+ssh <GPU_HOST> 'du -sh ~/laser-plasma-research/runs/<RUN_NAME> 2>/dev/null && df -h ~/laser-plasma-research | head -2'
 ```
 
 ---
@@ -269,7 +269,7 @@ After a simulation completes, run the **full 7-stage analysis pipeline**. All st
 ### Full pipeline launch
 
 ```bash
-ssh substrate-gpu 'source ~/miniforge3/etc/profile.d/conda.sh && conda activate plasma && cd ~/laser-plasma-research && nohup bash -c "
+ssh <GPU_HOST> 'source ~/miniforge3/etc/profile.d/conda.sh && conda activate plasma && cd ~/laser-plasma-research && nohup bash -c "
 echo === STAGE 1/7: VISUALIZE_ALL === && \
 python -u analysis_scripts/visualize_all.py --dir runs/<RUN_NAME> --animate 2>&1 && \
 echo === STAGE 2/7: POST_ANALYSIS === && \
@@ -302,7 +302,7 @@ echo === ALL ANALYSIS COMPLETE ===" > <RUN_NAME>_analysis.log 2>&1 & echo "Analy
 ### Monitor pipeline progress
 
 ```bash
-ssh substrate-gpu 'pgrep -af "pb11\|visualize_all" | grep -v grep | head -5; echo ""; tail -25 ~/laser-plasma-research/<RUN_NAME>_analysis.log'
+ssh <GPU_HOST> 'pgrep -af "pb11\|visualize_all" | grep -v grep | head -5; echo ""; tail -25 ~/laser-plasma-research/<RUN_NAME>_analysis.log'
 ```
 
 **Look for:**
@@ -327,13 +327,13 @@ ffmpeg's h264 encoder requires even pixel dimensions. Stages 6-7 produce some ma
 **Always remove 0-byte MP4s after the pipeline completes:**
 
 ```bash
-ssh substrate-gpu 'cd ~/laser-plasma-research/runs/<RUN_NAME>/figures && for f in *.mp4; do [ -s "$f" ] || (echo "Removing 0-byte: $f" && rm -f "$f"); done && echo "Done"'
+ssh <GPU_HOST> 'cd ~/laser-plasma-research/runs/<RUN_NAME>/figures && for f in *.mp4; do [ -s "$f" ] || (echo "Removing 0-byte: $f" && rm -f "$f"); done && echo "Done"'
 ```
 
 ### Inventory check after pipeline
 
 ```bash
-ssh substrate-gpu 'echo "=== FIGURES ===" && ls -la ~/laser-plasma-research/runs/<RUN_NAME>/figures/ | grep -E "mp4|gif|png" | awk "{print \$5, \$9}" | sort -k 2; echo ""; echo "=== RUN DIR ===" && ls -la ~/laser-plasma-research/runs/<RUN_NAME>/ | grep -E "csv|txt|log" | awk "{print \$5, \$9}" | sort -k 2'
+ssh <GPU_HOST> 'echo "=== FIGURES ===" && ls -la ~/laser-plasma-research/runs/<RUN_NAME>/figures/ | grep -E "mp4|gif|png" | awk "{print \$5, \$9}" | sort -k 2; echo ""; echo "=== RUN DIR ===" && ls -la ~/laser-plasma-research/runs/<RUN_NAME>/ | grep -E "csv|txt|log" | awk "{print \$5, \$9}" | sort -k 2'
 ```
 
 Expect ~10 figures + ~12 reports/CSVs/logs.
@@ -352,23 +352,23 @@ mkdir -p ~/LaserFusionResearch/research/laser-plasma-research/runs/<RUN_NAME>/fi
 \
 # Pull figures (only PNG/GIF/MP4)
 rsync -avh --include='*.mp4' --include='*.gif' --include='*.png' --exclude='*' \
-  substrate-gpu:'~/laser-plasma-research/runs/<RUN_NAME>/figures/' \
+  <GPU_HOST>:'~/laser-plasma-research/runs/<RUN_NAME>/figures/' \
   ~/LaserFusionResearch/research/laser-plasma-research/runs/<RUN_NAME>/figures/ && \
 \
 # Pull reports + CSVs + logs (everything text)
 rsync -avh \
-  substrate-gpu:'~/laser-plasma-research/runs/<RUN_NAME>/post_analysis_report.txt' \
-  substrate-gpu:'~/laser-plasma-research/runs/<RUN_NAME>/phase_analysis_report.txt' \
-  substrate-gpu:'~/laser-plasma-research/runs/<RUN_NAME>/reconnection_summary.txt' \
-  substrate-gpu:'~/laser-plasma-research/runs/<RUN_NAME>/reconnection_rate_offline.csv' \
-  substrate-gpu:'~/laser-plasma-research/runs/<RUN_NAME>/fusion_diagnostics.csv' \
-  substrate-gpu:'~/laser-plasma-research/runs/<RUN_NAME>/zone_report.txt' \
-  substrate-gpu:'~/laser-plasma-research/runs/<RUN_NAME>/run_meta.txt' \
-  substrate-gpu:'~/laser-plasma-research/runs/<RUN_NAME>/run.log' \
-  substrate-gpu:'~/laser-plasma-research/runs/<RUN_NAME>/fusion_accounting_notes.txt' \
-  substrate-gpu:'~/laser-plasma-research/runs/<RUN_NAME>/fusion_rate_power_by_iter.csv' \
-  substrate-gpu:'~/laser-plasma-research/runs/<RUN_NAME>/reconnection_rate_by_iter.csv' \
-  substrate-gpu:'~/laser-plasma-research/runs/<RUN_NAME>/step_time_index.csv' \
+  <GPU_HOST>:'~/laser-plasma-research/runs/<RUN_NAME>/post_analysis_report.txt' \
+  <GPU_HOST>:'~/laser-plasma-research/runs/<RUN_NAME>/phase_analysis_report.txt' \
+  <GPU_HOST>:'~/laser-plasma-research/runs/<RUN_NAME>/reconnection_summary.txt' \
+  <GPU_HOST>:'~/laser-plasma-research/runs/<RUN_NAME>/reconnection_rate_offline.csv' \
+  <GPU_HOST>:'~/laser-plasma-research/runs/<RUN_NAME>/fusion_diagnostics.csv' \
+  <GPU_HOST>:'~/laser-plasma-research/runs/<RUN_NAME>/zone_report.txt' \
+  <GPU_HOST>:'~/laser-plasma-research/runs/<RUN_NAME>/run_meta.txt' \
+  <GPU_HOST>:'~/laser-plasma-research/runs/<RUN_NAME>/run.log' \
+  <GPU_HOST>:'~/laser-plasma-research/runs/<RUN_NAME>/fusion_accounting_notes.txt' \
+  <GPU_HOST>:'~/laser-plasma-research/runs/<RUN_NAME>/fusion_rate_power_by_iter.csv' \
+  <GPU_HOST>:'~/laser-plasma-research/runs/<RUN_NAME>/reconnection_rate_by_iter.csv' \
+  <GPU_HOST>:'~/laser-plasma-research/runs/<RUN_NAME>/step_time_index.csv' \
   ~/LaserFusionResearch/research/laser-plasma-research/runs/<RUN_NAME>/
 ```
 
@@ -385,7 +385,7 @@ File sizes should match what you see on cloud.
 For pulling just one file (e.g., to view a specific figure):
 
 ```bash
-scp substrate-gpu:~/laser-plasma-research/runs/<RUN_NAME>/figures/<FILE>.png ~/Downloads/
+scp <GPU_HOST>:~/laser-plasma-research/runs/<RUN_NAME>/figures/<FILE>.png ~/Downloads/
 ```
 
 ### Transfer simulation script changes (Mac → Cloud)
@@ -395,7 +395,7 @@ When you've edited the script locally:
 ```bash
 rsync -avhc --progress \
   /Users/brenworth2/LaserFusionResearch/research/laser-plasma-research/simulation/pb11_ring_reconnection_v12_fuel_center_outer.py \
-  substrate-gpu:~/laser-plasma-research/simulation/
+  <GPU_HOST>:~/laser-plasma-research/simulation/
 ```
 
 The `-c` flag uses checksums (not timestamps) — only transfers if files actually differ.
@@ -407,7 +407,7 @@ The `-c` flag uses checksums (not timestamps) — only transfers if files actual
 ### Disk space check
 
 ```bash
-ssh substrate-gpu 'df -h ~/laser-plasma-research | head -2'
+ssh <GPU_HOST> 'df -h ~/laser-plasma-research | head -2'
 ```
 
 Cloud has 3.5 TB total. We aim to keep at least ~1 TB free for the next run.
@@ -417,7 +417,7 @@ Cloud has 3.5 TB total. We aim to keep at least ~1 TB free for the next run.
 After analysis pipeline completes AND figures/reports are pulled to Mac:
 
 ```bash
-ssh substrate-gpu 'echo "=== Before cleanup ===" && du -sh ~/laser-plasma-research/runs/<RUN_NAME>/particles ~/laser-plasma-research/runs/<RUN_NAME>/fields 2>/dev/null && df -h ~/laser-plasma-research | head -2 && echo "" && rm -rf ~/laser-plasma-research/runs/<RUN_NAME>/particles ~/laser-plasma-research/runs/<RUN_NAME>/fields ~/laser-plasma-research/runs/<RUN_NAME>/figures/cache && echo "" && echo "=== After cleanup ===" && df -h ~/laser-plasma-research | head -2'
+ssh <GPU_HOST> 'echo "=== Before cleanup ===" && du -sh ~/laser-plasma-research/runs/<RUN_NAME>/particles ~/laser-plasma-research/runs/<RUN_NAME>/fields 2>/dev/null && df -h ~/laser-plasma-research | head -2 && echo "" && rm -rf ~/laser-plasma-research/runs/<RUN_NAME>/particles ~/laser-plasma-research/runs/<RUN_NAME>/fields ~/laser-plasma-research/runs/<RUN_NAME>/figures/cache && echo "" && echo "=== After cleanup ===" && df -h ~/laser-plasma-research | head -2'
 ```
 
 This deletes:
@@ -431,13 +431,13 @@ Keeps:
 ### Full run deletion (only if you want to start fresh)
 
 ```bash
-ssh substrate-gpu 'rm -rf ~/laser-plasma-research/runs/<RUN_NAME> && rm -f ~/laser-plasma-research/<RUN_NAME>.log ~/laser-plasma-research/<RUN_NAME>_analysis.log && echo "Removed"'
+ssh <GPU_HOST> 'rm -rf ~/laser-plasma-research/runs/<RUN_NAME> && rm -f ~/laser-plasma-research/<RUN_NAME>.log ~/laser-plasma-research/<RUN_NAME>_analysis.log && echo "Removed"'
 ```
 
 ### Inventory current cloud state
 
 ```bash
-ssh substrate-gpu 'echo "=== Disk ===" && df -h ~/laser-plasma-research | head -2; echo ""; echo "=== Runs ===" && du -sh ~/laser-plasma-research/runs/*/ 2>/dev/null | sort -h'
+ssh <GPU_HOST> 'echo "=== Disk ===" && df -h ~/laser-plasma-research | head -2; echo ""; echo "=== Runs ===" && du -sh ~/laser-plasma-research/runs/*/ 2>/dev/null | sort -h'
 ```
 
 ---
@@ -449,13 +449,13 @@ ssh substrate-gpu 'echo "=== Disk ===" && df -h ~/laser-plasma-research | head -
 #### Step 1: Identify what's running
 
 ```bash
-ssh substrate-gpu 'ps -u substrate -o pid,etime,cmd | grep -E "python|warpx|amrex" | grep -v grep'
+ssh <GPU_HOST> 'ps -u <USER> -o pid,etime,cmd | grep -E "python|warpx|amrex" | grep -v grep'
 ```
 
 #### Step 2: Force-kill ALL Python processes
 
 ```bash
-ssh substrate-gpu 'pkill -9 -u substrate python 2>/dev/null; pkill -9 -u substrate -f "warpx\|pb11\|simulation\|analysis_scripts" 2>/dev/null; sleep 5; echo "After kill:" && ps -u substrate -o pid,etime,cmd | grep -E "python|warpx|amrex" | grep -v grep || echo "(all clear)"'
+ssh <GPU_HOST> 'pkill -9 -u <USER> python 2>/dev/null; pkill -9 -u <USER> -f "warpx\|pb11\|simulation\|analysis_scripts" 2>/dev/null; sleep 5; echo "After kill:" && ps -u <USER> -o pid,etime,cmd | grep -E "python|warpx|amrex" | grep -v grep || echo "(all clear)"'
 ```
 
 #### Step 3: Clean up partial run files
@@ -463,13 +463,13 @@ ssh substrate-gpu 'pkill -9 -u substrate python 2>/dev/null; pkill -9 -u substra
 If a run was killed mid-execution, the run directory may have partial dumps. Remove it:
 
 ```bash
-ssh substrate-gpu 'rm -rf ~/laser-plasma-research/runs/<RUN_NAME> && rm -f ~/laser-plasma-research/<RUN_NAME>.log && echo "Removed partial run"'
+ssh <GPU_HOST> 'rm -rf ~/laser-plasma-research/runs/<RUN_NAME> && rm -f ~/laser-plasma-research/<RUN_NAME>.log && echo "Removed partial run"'
 ```
 
 #### Step 4: Verify clean state
 
 ```bash
-ssh substrate-gpu 'echo "=== Processes ===" && ps -u substrate -o pid,etime,cmd | grep -E "python|warpx|amrex" | grep -v grep || echo "(no python/warpx running)"; echo ""; echo "=== Disk ===" && df -h ~/laser-plasma-research | head -2; echo ""; echo "=== Runs ===" && ls ~/laser-plasma-research/runs/'
+ssh <GPU_HOST> 'echo "=== Processes ===" && ps -u <USER> -o pid,etime,cmd | grep -E "python|warpx|amrex" | grep -v grep || echo "(no python/warpx running)"; echo ""; echo "=== Disk ===" && df -h ~/laser-plasma-research | head -2; echo ""; echo "=== Runs ===" && ls ~/laser-plasma-research/runs/'
 ```
 
 ### When `rm -rf` says "Directory not empty"
@@ -477,19 +477,19 @@ ssh substrate-gpu 'echo "=== Processes ===" && ps -u substrate -o pid,etime,cmd 
 This means a process is still actively writing to the directory. Do NOT just retry — find the process first:
 
 ```bash
-ssh substrate-gpu 'lsof +D ~/laser-plasma-research/runs/<RUN_NAME> 2>/dev/null | head -5'
+ssh <GPU_HOST> 'lsof +D ~/laser-plasma-research/runs/<RUN_NAME> 2>/dev/null | head -5'
 ```
 
 This shows which PID has files open. Kill it directly:
 
 ```bash
-ssh substrate-gpu 'kill -9 <PID>; sleep 5; rm -rf ~/laser-plasma-research/runs/<RUN_NAME>'
+ssh <GPU_HOST> 'kill -9 <PID>; sleep 5; rm -rf ~/laser-plasma-research/runs/<RUN_NAME>'
 ```
 
 ### When cloud disk is unexpectedly full
 
 ```bash
-ssh substrate-gpu 'du -sh ~/laser-plasma-research/runs/*/ 2>/dev/null | sort -h | tail -10'
+ssh <GPU_HOST> 'du -sh ~/laser-plasma-research/runs/*/ 2>/dev/null | sort -h | tail -10'
 ```
 
 Identifies the largest run directories. Delete `particles/` and `fields/` from completed/analyzed ones.
@@ -537,13 +537,13 @@ For testing a new configuration before committing to a long run:
 
 ```bash
 # Preflight (50 steps, ~5 min)
-ssh substrate-gpu '... --max-steps 50 --dump-period 25 --outdir runs/_test_<TAG>'
+ssh <GPU_HOST> '... --max-steps 50 --dump-period 25 --outdir runs/_test_<TAG>'
 
 # Verify
-ssh substrate-gpu 'tail -20 ~/laser-plasma-research/_test_<TAG>.log | grep -E "Geometry|d_i|Grid|SIMULATION COMPLETE"'
+ssh <GPU_HOST> 'tail -20 ~/laser-plasma-research/_test_<TAG>.log | grep -E "Geometry|d_i|Grid|SIMULATION COMPLETE"'
 
 # Cleanup
-ssh substrate-gpu 'rm -rf ~/laser-plasma-research/runs/_test_<TAG> && rm -f ~/laser-plasma-research/_test_<TAG>.log'
+ssh <GPU_HOST> 'rm -rf ~/laser-plasma-research/runs/_test_<TAG> && rm -f ~/laser-plasma-research/_test_<TAG>.log'
 ```
 
 ### Recipe D: Edit simulation script
@@ -560,10 +560,10 @@ python3 -c "import ast; ast.parse(open('/Users/brenworth2/LaserFusionResearch/re
 # 3. Push to cloud
 rsync -avhc --progress \
   /Users/brenworth2/LaserFusionResearch/research/laser-plasma-research/simulation/pb11_ring_reconnection_v12_fuel_center_outer.py \
-  substrate-gpu:~/laser-plasma-research/simulation/
+  <GPU_HOST>:~/laser-plasma-research/simulation/
 
 # 4. Verify on cloud
-ssh substrate-gpu 'grep -n "your-edit-marker" ~/laser-plasma-research/simulation/pb11_ring_reconnection_v12_fuel_center_outer.py | head -5'
+ssh <GPU_HOST> 'grep -n "your-edit-marker" ~/laser-plasma-research/simulation/pb11_ring_reconnection_v12_fuel_center_outer.py | head -5'
 
 # 5. Run preflight to verify behavior
 [See Recipe C]
@@ -639,7 +639,7 @@ A process is still writing files. See [Process Recovery](#process-recovery).
 Check `run_meta.txt` and the WarpX log:
 
 ```bash
-ssh substrate-gpu 'grep "d_i=" ~/laser-plasma-research/runs/<RUN_NAME>/run.log | head -1; echo ""; cat ~/laser-plasma-research/runs/<RUN_NAME>/run_meta.txt | grep -E "ring_radius|spot_radius|base_density"'
+ssh <GPU_HOST> 'grep "d_i=" ~/laser-plasma-research/runs/<RUN_NAME>/run.log | head -1; echo ""; cat ~/laser-plasma-research/runs/<RUN_NAME>/run_meta.txt | grep -E "ring_radius|spot_radius|base_density"'
 ```
 
 Verify:
@@ -650,7 +650,7 @@ Verify:
 
 Expected. ffmpeg's h264 fails on odd pixel dimensions. GIFs are auto-generated as fallback. Just remove the broken MP4s:
 ```bash
-ssh substrate-gpu 'cd ~/laser-plasma-research/runs/<RUN_NAME>/figures && for f in *.mp4; do [ -s "$f" ] || rm -f "$f"; done'
+ssh <GPU_HOST> 'cd ~/laser-plasma-research/runs/<RUN_NAME>/figures && for f in *.mp4; do [ -s "$f" ] || rm -f "$f"; done'
 ```
 
 ### Symptom: Energies look unbelievably high (100+ MeV mean)
@@ -668,7 +668,7 @@ Normal — Pass 1 reads all particle dumps (slow), Pass 2 renders animations (sl
 
 Check the inline fusion CSV:
 ```bash
-ssh substrate-gpu 'head -5 ~/laser-plasma-research/runs/<RUN_NAME>/fusion_rate_power_by_iter.csv; echo "..."; tail -5 ~/laser-plasma-research/runs/<RUN_NAME>/fusion_rate_power_by_iter.csv'
+ssh <GPU_HOST> 'head -5 ~/laser-plasma-research/runs/<RUN_NAME>/fusion_rate_power_by_iter.csv; echo "..."; tail -5 ~/laser-plasma-research/runs/<RUN_NAME>/fusion_rate_power_by_iter.csv'
 ```
 
 You should see fusion rates increasing through the run (not stuck at 0).

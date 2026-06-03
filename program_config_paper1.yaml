@@ -22,7 +22,7 @@
 program:
   name: "Paper 1 — Ring-Reconnection Comparative Yield Baseline"
   org: "laser-plasma-research"
-  contact_email: "bworth@substrate.ai"
+  contact_email: "brenworth@gmail.com"
   default_max_parallel: 1
   default_mpi_ranks: 1
 

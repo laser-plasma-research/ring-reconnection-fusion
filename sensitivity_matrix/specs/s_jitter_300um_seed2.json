@@ -1,0 +1,53 @@
+{
+  "comment": "position jitter, uniform-in-disk parameter 300 um (RMS shift 213 um), seed 20260530 - confirmatory second draw vs s_jitter_300um (seed 20260528)",
+  "spots": [
+    {
+      "enabled": true,
+      "amp_scale": 1.0,
+      "dx_um": -58.88690049174141,
+      "dz_um": -122.3112204679348
+    },
+    {
+      "enabled": true,
+      "amp_scale": 1.0,
+      "dx_um": -215.9786863246674,
+      "dz_um": 177.10935063129247
+    },
+    {
+      "enabled": true,
+      "amp_scale": 1.0,
+      "dx_um": -186.71828756367353,
+      "dz_um": 136.62446012729765
+    },
+    {
+      "enabled": true,
+      "amp_scale": 1.0,
+      "dx_um": 193.02281939087726,
+      "dz_um": 174.94191903327712
+    },
+    {
+      "enabled": true,
+      "amp_scale": 1.0,
+      "dx_um": 109.72390607254438,
+      "dz_um": 30.44281997230492
+    },
+    {
+      "enabled": true,
+      "amp_scale": 1.0,
+      "dx_um": 186.32432817821316,
+      "dz_um": 44.40474747009243
+    },
+    {
+      "enabled": true,
+      "amp_scale": 1.0,
+      "dx_um": -24.50651469647213,
+      "dz_um": 140.3120755989008
+    },
+    {
+      "enabled": true,
+      "amp_scale": 1.0,
+      "dx_um": 227.7074520595742,
+      "dz_um": -155.77906980567096
+    }
+  ]
+}

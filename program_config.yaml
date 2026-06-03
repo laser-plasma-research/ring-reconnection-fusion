@@ -20,7 +20,7 @@
 program:
   name: "Ring-Reconnection Plasma Research"
   org: "laser-plasma-research"
-  contact_email: "bworth@substrate.ai"  # for OpenAlex/Crossref polite-pool routing
+  contact_email: "brenworth@gmail.com"  # for OpenAlex/Crossref polite-pool routing
   # IMPORTANT: each WarpX run needs ~80-90 GB on M2 Max (8 ranks × ~10 GB each).
   # Running 2 in parallel needs ~170 GB which exceeds 96 GB physical RAM and
   # causes massive swap thrashing. Keep this at 1 unless on bigger hardware.

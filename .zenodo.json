@@ -26,7 +26,20 @@
     "ring geometry",
     "X-line reconnection"
   ],
-  "version": "1.0.0",
-  "notes": "Initial public release. Paper 3 v0.8 Option G geometry: outer annulus at 3.7 mm (centre) gives a 600 µm clean buffer past the spot 2σ tail. Paper 1 anchors (ring radius 2.4 mm, spot σ 300 µm) preserved.",
-  "related_identifiers": []
+  "version": "1.2.2",
+  "notes": "Public release v1.2.2. Paper 1 anchors (ring radius 2.4 mm, spot sigma 300 um) preserved.",
+  "related_identifiers": [
+    {
+      "identifier": "10.5281/zenodo.20528212",
+      "relation": "isSupplementedBy",
+      "resource_type": "dataset",
+      "scheme": "doi"
+    },
+    {
+      "identifier": "10.5281/zenodo.20526854",
+      "relation": "isSupplementedBy",
+      "resource_type": "software",
+      "scheme": "doi"
+    }
+  ]
 }

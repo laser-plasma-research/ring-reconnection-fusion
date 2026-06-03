@@ -1,0 +1,7 @@
+label,fuel,laser_energy_J,alphas_per_shot,alphas_per_J,method,reference
+"Picciotto et al. 2014 (PALS, p-11B TNSA)",p-11B,600.0,1000000000.0,1700000.0,"TNSA, hydrogenated B target","Phys. Rev. X 4, 031030 (2014)"
+Giuffrida et al. 2020 (PALS),p-11B,600.0,50000000000.0,83000000.0,ns laser onto BN target,"Phys. Rev. E 101, 013204 (2020)"
+"Margarone et al. 2022 (PALS, upgraded)",p-11B,800.0,500000000000.0,630000000.0,"in-target proton-boron, scaled BN","Front. Phys. 10, 932744 (2022)"
+Bonasera et al. 2013 (Texas Petawatt),p-11B,80.0,2000000000.0,25000000.0,"PW short-pulse, cluster target","Phys. Rev. Lett. 111, 105003 (2013)"
+HB11 Energy (Hora avalanche concept),p-11B,500.0,100000000000.0,200000000.0,"kJ-class ns + ps trigger, avalanche claim","Hora et al. Laser Part. Beams (multiple); claim, not yet replicated"
+"NIF (Dec 2022, DT — not p-11B, reference only)",DT (cryogenic),2050000.0,nan,nan,"indirect-drive ICF, gain ~1.5 on target","LLNL press release Dec 2022; PRL 132, 065102 (2024)"

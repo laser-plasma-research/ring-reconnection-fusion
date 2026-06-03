@@ -1,0 +1,53 @@
+{
+  "comment": "energy split-ring +/-5% (spots 0-3 hot, 4-7 cold)",
+  "spots": [
+    {
+      "enabled": true,
+      "amp_scale": 1.05,
+      "dx_um": 0.0,
+      "dz_um": 0.0
+    },
+    {
+      "enabled": true,
+      "amp_scale": 1.05,
+      "dx_um": 0.0,
+      "dz_um": 0.0
+    },
+    {
+      "enabled": true,
+      "amp_scale": 1.05,
+      "dx_um": 0.0,
+      "dz_um": 0.0
+    },
+    {
+      "enabled": true,
+      "amp_scale": 1.05,
+      "dx_um": 0.0,
+      "dz_um": 0.0
+    },
+    {
+      "enabled": true,
+      "amp_scale": 0.95,
+      "dx_um": 0.0,
+      "dz_um": 0.0
+    },
+    {
+      "enabled": true,
+      "amp_scale": 0.95,
+      "dx_um": 0.0,
+      "dz_um": 0.0
+    },
+    {
+      "enabled": true,
+      "amp_scale": 0.95,
+      "dx_um": 0.0,
+      "dz_um": 0.0
+    },
+    {
+      "enabled": true,
+      "amp_scale": 0.95,
+      "dx_um": 0.0,
+      "dz_um": 0.0
+    }
+  ]
+}

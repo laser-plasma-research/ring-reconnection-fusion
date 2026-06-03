@@ -1,6 +1,6 @@
 # Ring Reconnection Fusion — Runtime Container
 
-**Version:** 1.0.0
+**Version:** 1.2.2
 **Author:** James B. Worth (ORCID: 0009-0005-5000-9497)
 **License:** Apache-2.0
 **Platform:** Linux x86_64 with NVIDIA H100 (CUDA 12.9, compute capability 9.0)
@@ -11,7 +11,7 @@ A reproducible Docker container image with a complete, GPU-enabled scientific
 Python environment for running 2D hybrid-PIC simulations of laser-driven
 p-11B aneutronic fusion via 8-spot ring magnetic reconnection. This is the
 captured production environment used to generate results for Worth (2026),
-*Reconnection-driven non-thermal fusion in a tabletop laser–plasma platform*
+*Reconnection-driven non-thermal proton acceleration to p-11B fusion energies at joule-class laser energy: a ring-geometry hybrid-PIC study*
 (in preparation).
 
 The container packages:
@@ -58,12 +58,9 @@ that the orchestrator and analysis scripts work in your environment.
 
 ## File integrity
 
-- **Image archive:** `ring-reconnection-fusion_v1.0.0.tar.gz`
-- **Size:** 8.85 GB
-- **SHA-256:** `1766793ebd78b07b131ae33d25d8b69ee3b7023f4ddf88a9713b8e8bd7fe0ffc`
-- **Image digest (after `docker load`):**
-  `sha256:bd69881cb5d99c6c86c7a18649d06118f1f48f0034214c93d143075f9af06ee7`
-- **Image size (uncompressed, loaded):** 25.1 GB
+- **Image archive:** `ring-reconnection-fusion-v1.2.2.tar.gz`
+- **Size:** 7.6 GB
+- **SHA-256:** `d3074eb2f12bb0218f6de05ace504f33c0e5755dbad67873681075f6f221af2e`
 
 Verify the archive before loading:
 
@@ -90,25 +87,25 @@ For the orchestrator (local workstation):
 - macOS or Linux
 - Python 3.10+ (for the orchestrator scripts)
 - `rsync`, `ssh`
-- Passwordless SSH access to the GPU host (`ssh substrate-gpu` or your
+- Passwordless SSH access to the GPU host (`ssh gpu-node` or your
   equivalent alias resolves and authenticates without password prompt)
 
 ## Load the image
 
 ```bash
-gunzip -c ring-reconnection-fusion_v1.0.0.tar.gz | docker load
+gunzip -c ring-reconnection-fusion-v1.2.2.tar.gz | docker load
 ```
 
 Verify:
 
 ```bash
-docker images ring-reconnection-fusion:v1.0.0
+docker images ring-reconnection-fusion:v1.2.2
 ```
 
 Smoke-test the load:
 
 ```bash
-docker run --rm --gpus all ring-reconnection-fusion:v1.0.0 python -c "
+docker run --rm --gpus all ring-reconnection-fusion:v1.2.2 python -c "
 import pywarpx
 from pywarpx import picmi
 print('pywarpx imports:', picmi.__file__)
@@ -130,7 +127,7 @@ The production workflow is split between two machines:
    │  Local workstation   │     ssh / scp  │  Remote GPU host        │
    │  (Mac or Linux)      │ ──────────────▶│  (single H100 GPU node) │
    │                      │                │                         │
-   │  stage_a_paperX.py   │                │  ring-reconnection-fusion:v1.0.0
+   │  stage_a_paperX.py   │                │  ring-reconnection-fusion:v1.2.2
    │    │                 │                │    (loaded container)   │
    │    ├─ launch_sim ────┼──ssh──────────▶│    docker run --gpus all│
    │    ├─ poll_sim       │   (per job)    │      ↓                  │
@@ -166,7 +163,7 @@ The orchestrator's ssh-dispatched commands can either:
 - Run the simulation **natively** against a matching conda env installed on
   the GPU host, or
 - Run the simulation **inside this container** via
-  `docker run --gpus all -v <workdir>:/work ring-reconnection-fusion:v1.0.0 mpirun ...`
+  `docker run --gpus all -v <workdir>:/work ring-reconnection-fusion:v1.2.2 mpirun ...`
 
 The container path is the recommended one for reproduction because the
 native install requires building WarpX from source with CUDA and matching
@@ -183,7 +180,7 @@ ring at R = 2.4 mm, σ = 300 µm, B = 85 T, with ch_bn fuel at 5×10²⁴ m⁻³
 ```bash
 docker run --rm --gpus all \
     -v $PWD/runs:/work/runs \
-    ring-reconnection-fusion:v1.0.0 \
+    ring-reconnection-fusion:v1.2.2 \
     mpirun -n 8 python -u /work/simulation/pb11_ring_reconnection_v15_pulsed.py \
         --test \
         --base-fuel ch_bn --base-density 5e24 \
@@ -205,7 +202,7 @@ overrides:
 ```bash
 docker run --rm --gpus all \
     -v $PWD/runs:/work/runs \
-    ring-reconnection-fusion:v1.0.0 \
+    ring-reconnection-fusion:v1.2.2 \
     mpirun -n 8 python -u /work/simulation/pb11_ring_reconnection_v15_pulsed.py \
         --base-fuel ch_bn --base-density 5e24 \
         --ring-radius-um 2400 --spot-radius-um 300 --n-spots 8 --b-seed 85 \
@@ -283,7 +280,7 @@ results back automatically.
 
    ```python
    f"setsid nohup docker run --rm --gpus all "
-   f"-v {CLOUD_ROOT}:/work ring-reconnection-fusion:v1.0.0 "
+   f"-v {CLOUD_ROOT}:/work ring-reconnection-fusion:v1.2.2 "
    f"mpirun -n 8 python -u /work/{SIM_SCRIPT} {flags} ..."
    ```
 
@@ -297,7 +294,7 @@ results back automatically.
 3. If using the container, verify it loaded on the GPU host:
 
    ```bash
-   ssh gpu-node 'docker images ring-reconnection-fusion:v1.0.0'
+   ssh gpu-node 'docker images ring-reconnection-fusion:v1.2.2'
    ```
 
 ### Run the Paper 1 campaign
@@ -355,7 +352,7 @@ against the published data deposit.
 
 ## Build provenance
 
-The container was built on substrate-cloud H100 80 GB hardware, May 2026,
+The container was built on a cloud H100 80 GB node, May 2026,
 using the following pipeline:
 
 1. Native production conda env (`plasma`) constructed from `environment.yml`
@@ -380,8 +377,7 @@ this image, see the source repository linked in the Zenodo metadata.
 If you use this container in published work, please cite both the container
 DOI (this Zenodo deposit) and the manuscript:
 
-> Worth, J. B. (2026). *Reconnection-driven non-thermal fusion in a
-> tabletop laser–plasma platform*. (In preparation.)
+> Worth, J. B. (2026). *Reconnection-driven non-thermal proton acceleration to p-11B fusion energies at joule-class laser energy: a ring-geometry hybrid-PIC study*. (In preparation.)
 
 A `CITATION.cff` file is included in the source repository for automated
 citation tooling.

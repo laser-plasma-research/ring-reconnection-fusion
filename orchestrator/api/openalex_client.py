@@ -13,7 +13,7 @@ OpenAlex is rate-limited (10/sec polite, 100/sec per email). Using a
 contact email gives priority routing.
 
 Usage:
-    client = OpenAlexClient(contact_email='bworth@substrate.ai')
+    client = OpenAlexClient(contact_email='brenworth@gmail.com')
     works = client.search_topics(['magnetic reconnection', 'fusion'],
                                   min_year=2015, max_results=20)
     for w in works:

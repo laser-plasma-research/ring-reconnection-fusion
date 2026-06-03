@@ -68,7 +68,7 @@ class MetadataHandler(DeliverableHandler):
             "name": self.paper.drafting_context.get('authors', 'Worth, J. B.'),
             "givenName": "James B.",
             "familyName": "Worth",
-            "email": "bworth@substrate.ai",
+            "email": "brenworth@gmail.com",
             "identifier": {
                 "@type": "PropertyValue",
                 "propertyID": "ORCID",
@@ -78,7 +78,7 @@ class MetadataHandler(DeliverableHandler):
             },
             "affiliation": {
                 "@type": "Organization",
-                "name": "Substrate AI",
+                "name": "Independent Researcher",
                 "address": {
                     "@type": "PostalAddress",
                     "addressLocality": "Valencia",

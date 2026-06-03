@@ -110,11 +110,11 @@ The intent of this repository is to make the work reproducible and open as it pr
 
 ## Author and affiliation
 
-**James B. Worth** — Founder & CTO, [Substrate AI](https://substrate.ai), Valencia, Spain.
+**James B. Worth** — Independent Researcher, Valencia, Spain.
 ORCID: [0009-0005-5000-9497](https://orcid.org/0009-0005-5000-9497).
-Contact: bworth@substrate.ai
+Contact: brenworth@gmail.com
 
-This research is conducted personally and independently of Substrate AI's commercial activities. The intellectual property and any resulting publications are individually held. Patent applications related to specific geometries and methods are pending.
+This research is conducted personally and independently of any commercial activities. The intellectual property and any resulting publications are individually held. Patent applications related to specific geometries and methods are pending.
 
 ## Licence
 
@@ -147,4 +147,4 @@ This repository is a work in progress. The following are recognised gaps to be a
 
 ## Contact
 
-For questions about the research or repository: bworth@substrate.ai. Issues and pull requests on this repository are welcome but please note that this is a single-researcher project; response times are best-effort.
+For questions about the research or repository: brenworth@gmail.com. Issues and pull requests on this repository are welcome but please note that this is a single-researcher project; response times are best-effort.

@@ -602,6 +602,34 @@ parser.add_argument('--substeps',     type=int, default=0,
                          '(80 at nx=256, 160 at nx=512). Increase if E-field NaN.')
 parser.add_argument('--lx-min-um',    type=float, default=0.0,
                     help='Minimum domain size in microns (default 0 = use d_i scaling). Forces ring to fit.')
+# ── 3D extension (opt-in; absent => 2D, byte-identical to legacy behaviour) ──
+parser.add_argument('--ny',           type=int, default=0,
+                    help='[3D] Number of grid cells in y. Default 0 => 2D '
+                         'Cartesian2DGrid (legacy). Any value >0 switches the '
+                         'deck to Cartesian3DGrid with NY cells in y.')
+parser.add_argument('--ly-um',        type=float, default=1500.0,
+                    help='[3D] Domain extent in y, micrometres (default 1500 = '
+                         '1.5 mm). Ignored unless --ny > 0.')
+# ── Boundary conditions (opt-in; default periodic => legacy behaviour) ───────
+# This hybrid-PIC build uses an MLMG projection-based divergence cleaner that
+# accepts ONLY: periodic, pec, pmc, neumann  (open/PML is rejected at init).
+# Particle tokens: periodic, absorbing, reflecting, thermal. The open-boundary
+# control run uses: --field-boundary neumann --particle-boundary absorbing
+# (zero-gradient field edge + absorbing particles = open/outflow analogue).
+# Verified against the live WarpX build via the local dry-run validator.
+parser.add_argument('--field-boundary', type=str, default='periodic',
+                    choices=['periodic','pec','pmc','neumann'],
+                    help='Field boundary condition on all domain edges '
+                         '(default periodic = legacy). NOTE: this hybrid-PIC '
+                         'build uses an MLMG projection divergence cleaner, '
+                         'which accepts ONLY periodic/pec/pmc/neumann (open/PML '
+                         'is rejected at init). For an open/outflow control use '
+                         '"neumann" (zero-gradient).')
+parser.add_argument('--particle-boundary', type=str, default='periodic',
+                    choices=['periodic','absorbing','reflecting','thermal'],
+                    help='Particle boundary condition on all domain edges '
+                         '(default periodic = legacy). Open-boundary control '
+                         'uses "absorbing".')
 parser.add_argument('--ramp-steps',   type=int,   default=100)
 parser.add_argument('--sigma-scale',  type=float, default=1.15)
 parser.add_argument('--eta-scale',    type=float, default=1.0)
@@ -806,12 +834,6 @@ parser.add_argument('--dump-period',       type=int,   default=2500,
                          '(captures reconnection event at ~30 ps resolution). '
                          'WARNING: at 512^2 each dump is ~17 GB. Disk usage scales as '
                          'n_steps / dump_period * 17 GB.')
-parser.add_argument('--no-current-support', action='store_true',
-                    help='Disable curl(B)/mu_0 supporting current in static mode '
-                         '(v12.13: default ON). The supporting current makes the '
-                         'seed B-field self-consistent in the Ohm solver, preventing '
-                         'spurious E-field generation at high beta. Use this flag '
-                         'only for diagnostic/baseline comparison runs.')
 
 # ── Fuel region enable/disable ───────────────────────────────────────────────
 parser.add_argument('--fuel-rod',        action='store_true',
@@ -870,6 +892,13 @@ parser.add_argument('--spot-radius-um',       type=float, default=300.0,
                          'Scale proportionally with --ring-radius-um for '
                          'self-similar geometry. Minimum is set by sigma/d_i '
                          '>= 2.95 (script convention for physics resolution).')
+
+parser.add_argument('--spot-spec', type=str, default='',
+                    help='Path to a JSON per-spot perturbation spec for the '
+                         'symmetry-sensitivity sweep. When empty (default), the '
+                         'seed is the unperturbed symmetric ring and output is '
+                         'BYTE-identical to the published baseline. See '
+                         'sensitivity_seed_patch.md for the schema.')
 
 args = parser.parse_args()
 
@@ -1219,6 +1248,11 @@ if args.nz > 0:
 if args.nppc > 0:
     NPPC = args.nppc
 
+# 3D extension: NY=0 keeps the deck in 2D (legacy). NY>0 enables 3D.
+IS_3D = args.ny > 0
+NY    = args.ny if IS_3D else 0
+LY_M  = args.ly_um * 1e-6 if IS_3D else 0.0
+
 # Domain: max of d_i-based and minimum specified
 LX_M_DI = LX_DI * d_i
 LZ_M_DI = LZ_DI * d_i
@@ -1419,21 +1453,51 @@ simulation = picmi.Simulation(warpx_serialize_initial_conditions=True, verbose=1
 pywarpx.amrex.the_arena_init_size        = 4_000_000_000  # 4 GB host
 pywarpx.amrex.the_device_arena_init_size = 8_000_000_000  # 8 GB GPU
 
-grid = picmi.Cartesian2DGrid(
-    number_of_cells=[NX, NZ],
-    lower_bound=[-LX_M/2, -LZ_M/2],
-    upper_bound=[ LX_M/2,  LZ_M/2],
-    lower_boundary_conditions=['periodic','periodic'],
-    upper_boundary_conditions=['periodic','periodic'],
-    lower_boundary_conditions_particles=['periodic','periodic'],
-    upper_boundary_conditions_particles=['periodic','periodic'],
-    # Domain decomposition: tuned for single-GPU runs.
-    # Default WarpX decomposition would split into 32x32 boxes (64 boxes for 256x256),
-    # which causes severe kernel-launch overhead on GPU. Use one large box per GPU.
-    # On CPU-MPI runs, AMReX still subdivides as needed via blocking_factor.
-    warpx_max_grid_size=max(NX, NZ),
-    warpx_blocking_factor=32,
-)
+# Boundary-condition lists built from CLI flags. Default periodic on every
+# edge reproduces the legacy hardcoded grid exactly. "open"/"absorbing" enable
+# the open-boundary control run.
+_FBC = args.field_boundary
+_PBC = args.particle_boundary
+if IS_3D:
+    # AMReX requires every domain dimension be divisible by blocking_factor.
+    # NY is often small (e.g. 8 or 32), so derive a safe factor: the largest
+    # power-of-two that divides NX, NY, and NZ and does not exceed min dim.
+    def _safe_blocking_factor(dims):
+        bf = min(dims)
+        # reduce to a value that divides all dims; powers of two are safe/typical
+        while bf > 1 and any(d % bf != 0 for d in dims):
+            bf //= 2
+        return max(1, bf)
+    _bf3d = min(32, _safe_blocking_factor([NX, NY, NZ]))
+    grid = picmi.Cartesian3DGrid(
+        number_of_cells=[NX, NY, NZ],
+        lower_bound=[-LX_M/2, -LY_M/2, -LZ_M/2],
+        upper_bound=[ LX_M/2,  LY_M/2,  LZ_M/2],
+        lower_boundary_conditions=[_FBC, _FBC, _FBC],
+        upper_boundary_conditions=[_FBC, _FBC, _FBC],
+        lower_boundary_conditions_particles=[_PBC, _PBC, _PBC],
+        upper_boundary_conditions_particles=[_PBC, _PBC, _PBC],
+        # Single-GPU 3D decomposition. max_grid_size caps box size; blocking
+        # factor must divide every dimension (derived above to handle small NY).
+        warpx_max_grid_size=max(NX, NZ),
+        warpx_blocking_factor=_bf3d,
+    )
+else:
+    grid = picmi.Cartesian2DGrid(
+        number_of_cells=[NX, NZ],
+        lower_bound=[-LX_M/2, -LZ_M/2],
+        upper_bound=[ LX_M/2,  LZ_M/2],
+        lower_boundary_conditions=[_FBC, _FBC],
+        upper_boundary_conditions=[_FBC, _FBC],
+        lower_boundary_conditions_particles=[_PBC, _PBC],
+        upper_boundary_conditions_particles=[_PBC, _PBC],
+        # Domain decomposition: tuned for single-GPU runs.
+        # Default WarpX decomposition would split into 32x32 boxes (64 boxes for 256x256),
+        # which causes severe kernel-launch overhead on GPU. Use one large box per GPU.
+        # On CPU-MPI runs, AMReX still subdivides as needed via blocking_factor.
+        warpx_max_grid_size=max(NX, NZ),
+        warpx_blocking_factor=32,
+    )
 
 def smooth_ramp(t='t'):
     return f'(1.0 - exp(-{t} / {RAMP_TIME_S:.8e}))'
@@ -1818,18 +1882,75 @@ _fuel_shape = fuel_shape_expr(FUEL_ROD, FUEL_RING_INNER, FUEL_RING_OUTER, FUEL_R
 
 
 # ── Density expression builder ───────────────────────────────────────────────
+def _load_spot_spec():
+    """Per-spot perturbation spec for the symmetry-sensitivity sweep.
+
+    Returns a list of N_SPOTS dicts with keys enabled(bool), amp_scale(float),
+    dx_m(float), dz_m(float). Empty --spot-spec -> unperturbed default, so
+    build_By_expression reproduces the published baseline. JSON schema: a top
+    level {"spots": [ {enabled, amp_scale, dx_um, dz_um} x N_SPOTS ]}.
+    """
+    default = [dict(enabled=True, amp_scale=1.0, dx_m=0.0, dz_m=0.0)
+               for _ in range(N_SPOTS)]
+    path = getattr(args, 'spot_spec', '') or ''
+    if not path:
+        return default
+    import json
+    with open(path) as fh:
+        spec = json.load(fh)
+    spots = spec.get('spots', [])
+    if len(spots) != N_SPOTS:
+        raise ValueError(
+            '--spot-spec {}: expected {} spot entries, got {}'.format(
+                path, N_SPOTS, len(spots)))
+    out = []
+    for s in spots:
+        out.append(dict(
+            enabled   = bool(s.get('enabled', True)),
+            amp_scale = float(s.get('amp_scale', 1.0)),
+            dx_m      = float(s.get('dx_um', 0.0)) * 1e-6,
+            dz_m      = float(s.get('dz_um', 0.0)) * 1e-6,
+        ))
+    return out
+
 def build_density(base_peak, base_bg, sigma, rod_density=0.0, ring_density=0.0):
     """
     Ring spot Gaussians (reconnection base) + rod fuel + ring fuel.
     Rod and ring use the shared _fuel_shape but with independent densities.
     """
-    spots = ' + '.join(
-        f'exp(-(((x-{RING_RADIUS_M*np.cos(2*np.pi*k/N_SPOTS):.8e})**2'
-        f'+(z-{RING_RADIUS_M*np.sin(2*np.pi*k/N_SPOTS):.8e})**2)'
-        f'/(2.0*{sigma:.8e}**2)))'
-        for k in range(N_SPOTS)
-    )
-    expr = f'{base_bg:.8e} + {base_peak:.8e} * ({spots})'
+    # SENSITIVITY PATCH (v0.7+): when --spot-spec is supplied, per-spot
+    # enable / amp_scale / dx_um / dz_um also apply to the density plume.
+    # No spec -> original generator path -> BYTE-identical baseline.
+    spec_active = bool(getattr(args, 'spot_spec', '') or '')
+    if not spec_active:
+        spots = ' + '.join(
+            f'exp(-(((x-{RING_RADIUS_M*np.cos(2*np.pi*k/N_SPOTS):.8e})**2'
+            f'+(z-{RING_RADIUS_M*np.sin(2*np.pi*k/N_SPOTS):.8e})**2)'
+            f'/(2.0*{sigma:.8e}**2)))'
+            for k in range(N_SPOTS)
+        )
+        expr = f'{base_bg:.8e} + {base_peak:.8e} * ({spots})'
+    else:
+        spec = _load_spot_spec()
+        spot_terms = []
+        for k in range(N_SPOTS):
+            sp = spec[k]
+            if (not sp['enabled']) or sp['amp_scale'] == 0.0:
+                continue  # missing-beam case: no plasma plume here
+            cx = RING_RADIUS_M * float(np.cos(2*np.pi*k/N_SPOTS)) + sp['dx_m']
+            cz = RING_RADIUS_M * float(np.sin(2*np.pi*k/N_SPOTS)) + sp['dz_m']
+            amp = sp['amp_scale']  # linear scaling: less laser -> less plasma
+            spot_terms.append(
+                f'({amp:.6f}*exp(-(((x-{cx:.8e})**2'
+                f'+(z-{cz:.8e})**2)'
+                f'/(2.0*{sigma:.8e}**2))))'
+            )
+        if spot_terms:
+            spots = ' + '.join(spot_terms)
+            expr = f'{base_bg:.8e} + {base_peak:.8e} * ({spots})'
+        else:
+            # All spots disabled -> only the background remains.
+            expr = f'{base_bg:.8e}'
 
     # Rod and ring can have different densities for the same species
     # We build separate shape terms to allow independent density scaling
@@ -2081,6 +2202,8 @@ if NEED_BHEAVY:
 #
 # B_SEED_NORM is defined at the top of the file alongside B_SEED_T.
 
+
+
 def build_By_expression():
     """Return the alternating-polarity dipolar By(x,z) formula.
 
@@ -2100,20 +2223,41 @@ def build_By_expression():
       The original By-only formula in this function is the geometry that
       produced the successful 696-ps run with measurable centre acceleration.
     """
+    # SENSITIVITY PATCH: per-spot amplitude/position/enable from --spot-spec.
+    # No spec -> original formatting path -> BYTE-identical baseline. Field is
+    # still installed via AnalyticInitialField at t=0 (static seed): no time
+    # dependence, no external drive, bounded one-shot energy budget unchanged.
+    spec_active = bool(getattr(args, 'spot_spec', '') or '')
+    spec  = _load_spot_spec()
     terms = []
     for k in range(N_SPOTS):
+        sp = spec[k]
+        if (not sp['enabled']) or sp['amp_scale'] == 0.0:
+            continue  # dark beam: no seed flux, removes its adjacent X-lines
         angle = 2.0 * np.pi * k / N_SPOTS
-        cx    = RING_RADIUS_M * np.cos(angle)
-        cz    = RING_RADIUS_M * np.sin(angle)
+        cx    = RING_RADIUS_M * np.cos(angle) + sp['dx_m']
+        cz    = RING_RADIUS_M * np.sin(angle) + sp['dz_m']
         sign  = (-1)**k
         sigma = SPOT_RADIUS_M
-        terms.append(
-            f"({sign:.1f} * {B_SEED_T:.4f}"
-            f" * sqrt((x - {cx:.8e})**2 + (z - {cz:.8e})**2)"
-            f" / {sigma:.6e}"
-            f" * exp(-0.5 * ((x - {cx:.8e})**2 + (z - {cz:.8e})**2)"
-            f" / {sigma:.6e}**2))"
-        )
+        if not spec_active:
+            terms.append(
+                f"({sign:.1f} * {B_SEED_T:.4f}"
+                f" * sqrt((x - {cx:.8e})**2 + (z - {cz:.8e})**2)"
+                f" / {sigma:.6e}"
+                f" * exp(-0.5 * ((x - {cx:.8e})**2 + (z - {cz:.8e})**2)"
+                f" / {sigma:.6e}**2))"
+            )
+        else:
+            amp = sign * B_SEED_T * sp['amp_scale']
+            terms.append(
+                f"({amp:.6f}"
+                f" * sqrt((x - {cx:.8e})**2 + (z - {cz:.8e})**2)"
+                f" / {sigma:.6e}"
+                f" * exp(-0.5 * ((x - {cx:.8e})**2 + (z - {cz:.8e})**2)"
+                f" / {sigma:.6e}**2))"
+            )
+    if not terms:
+        return '0.0'
     return " + ".join(terms)
 
 
@@ -2680,11 +2824,6 @@ def fusion_diagnostic_callback():
     # R_CENTRE=0.25*R_RING zone is geometrically inappropriate for our
     # 8-spot ring config.  See pb11_zone_analysis_paper3.py / Stage D
     # for canonical zone diagnostics.
-    centre_metrics = {
-        'E_mean': float('nan'), 'E_95th': float('nan'),
-        'N_centre': 0, 'outer_E_95th': float('nan'),
-        'ratio': float('nan'),
-    }
 
     # FIX K: wall-clock elapsed
     wall_elapsed = _time.perf_counter() - wall_t
@@ -2726,12 +2865,10 @@ def fusion_diagnostic_callback():
                 f'{r["key"]}:{fmt(rates.get(r["key"],float("nan")))}/s'
                 for r in ALL_RXNS if r['active']
             )
-            ratio_str = fmt(centre_metrics['ratio'])
             print(
                 f'  [diag] iter={step:6d} t={t_s*1e12:.1f}ps'
                 f' | {rxn_str}'
                 f' | P={fmt(total_power)}W E_cum={fmt(cum_energy)}J'
-                f' | centre/outer={ratio_str}'
                 f' | gain={fmt(gain)}',
                 flush=True
             )
@@ -2814,6 +2951,10 @@ def _sample_field_at(field_array, x_target, z_target, lo_x, lo_z, dx, dz):
     return float('nan')
 
 
+# One-shot guard for the optional 3D field-shape debug print (see helper below).
+_field_shape_logged = [False]
+
+
 def _try_get_field_array(component):
     """Attempt to fetch a 2D field array (component in 'Bx','By','Bz','Ex','Ey','Ez')
     from the running WarpX simulation. Returns (array, lo_x, lo_z, dx, dz) or
@@ -2842,17 +2983,53 @@ def _try_get_field_array(component):
             arr = arr[0]
         arr = _to_cpu(arr)
         arr = np.asarray(arr)
-        if arr.ndim != 2:
+        # 3D: WarpX returns a 3D field array; the inline reconnection callback
+        # operates on the (x,z) plane only, so we extract the central y-slice.
+        # The axis order of the returned array is NOT assumed silently: we
+        # verify the post-slice 2D shape against the grid's (NX,NZ) and bail
+        # (returning None, never raising) if it does not match. This converts a
+        # wrong-axis assumption into a visible no-op diagnostic rather than a
+        # silently-mis-sliced plane. Full 3D diagnostics consume the openPMD
+        # dumps directly in the 3D analysis scripts.
+        if arr.ndim == 3:
+            nx_g = grid.number_of_cells[0]
+            nz_g = grid.number_of_cells[2]   # 3D: z is index 2
+            ny_g = grid.number_of_cells[1]
+            # AXIS-CONVENTION READOUT: the returned 3D array axis order is not
+            # documented for this build. Set env PB11_DEBUG_FIELD_SHAPE=1 to
+            # print the raw shape on the first 3D field fetch — this settles
+            # whether WarpX returns [nz,ny,nx] (assumed) or another order,
+            # without editing code on the GPU. Printed once, then suppressed.
+            if os.environ.get('PB11_DEBUG_FIELD_SHAPE') and not _field_shape_logged[0]:
+                print(f'FIELD_SHAPE {component} raw={arr.shape} '
+                      f'grid(nx,ny,nz)=({nx_g},{ny_g},{nz_g})', flush=True)
+                _field_shape_logged[0] = True
+            # Identify the y-axis as the one matching NY, slice its midpoint.
+            if arr.shape[1] == ny_g:
+                arr = arr[:, arr.shape[1] // 2, :]
+            elif arr.shape[0] == ny_g:
+                arr = arr[arr.shape[0] // 2, :, :]
+            elif arr.shape[2] == ny_g:
+                arr = arr[:, :, arr.shape[2] // 2]
+            else:
+                # No axis matches NY — unexpected layout; do not guess.
+                return None, 0, 0, 0, 0
+            # Verify the recovered plane is (NZ,NX) or (NX,NZ); otherwise bail.
+            if sorted(arr.shape) != sorted((nz_g, nx_g)):
+                return None, 0, 0, 0, 0
+        elif arr.ndim != 2:
             # Unexpected shape, give up gracefully
             return None, 0, 0, 0, 0
 
-        # Get grid extents from the simulation grid object
+        # Get grid extents from the simulation grid object.
+        # In 3D the axis order is (x,y,z), so z is index 2; in 2D z is index 1.
+        z_idx = 2 if IS_3D else 1
         lo_x = grid.lower_bound[0]
-        lo_z = grid.lower_bound[1]
+        lo_z = grid.lower_bound[z_idx]
         hi_x = grid.upper_bound[0]
-        hi_z = grid.upper_bound[1]
+        hi_z = grid.upper_bound[z_idx]
         nx_grid = grid.number_of_cells[0]
-        nz_grid = grid.number_of_cells[1]
+        nz_grid = grid.number_of_cells[z_idx]
         dx = (hi_x - lo_x) / nx_grid
         dz = (hi_z - lo_z) / nz_grid
         return arr, lo_x, lo_z, dx, dz
@@ -3374,13 +3551,13 @@ simulation.add_diagnostic(picmi.FieldDiagnostic(
     name='fields', grid=grid, period=DUMP_PERIOD,
     data_list=['B','E','J','rho'],
     write_dir=OUTDIR, warpx_format='openpmd',
-    warpx_openpmd_backend='h5'))
+    warpx_openpmd_backend="h5"))
 
 simulation.add_diagnostic(picmi.ParticleDiagnostic(
     name='particles', period=DUMP_PERIOD, species=all_species,
     data_list=['position','momentum','weighting'],
     write_dir=OUTDIR, warpx_format='openpmd',
-    warpx_openpmd_backend='h5'))
+    warpx_openpmd_backend="h5"))
 
 
 # ============================================================================
@@ -3397,6 +3574,15 @@ if rank == 0:
         fh.write(f'single_spot_mode={SINGLE_SPOT_MODE}\n')
         fh.write(f'ring_radius_m={RING_RADIUS_M:.3e}\n')
         fh.write(f'spot_radius_m={SPOT_RADIUS_M:.3e}\n')
+        # Dimensionality marker: 2D (default) or 3D when --ny > 0. Recorded so
+        # downstream analysis and reproduction can distinguish 2D vs 3D runs.
+        fh.write(f'dimensionality={"3D" if IS_3D else "2D"}\n')
+        if IS_3D:
+            fh.write(f'ny={NY}\n')
+            fh.write(f'ly_m={LY_M:.3e}\n')
+        # Boundary conditions (default periodic; non-periodic = control run).
+        fh.write(f'field_boundary={args.field_boundary}\n')
+        fh.write(f'particle_boundary={args.particle_boundary}\n')
         # PATCHED: rod/outer geometry written conditionally so downstream
         # analysis (first_transit, zone_analysis) can correctly disable
         # zones when fuel region is not placed.
@@ -3432,7 +3618,14 @@ if rank == 0:
         fh.write(f'b_seed_t={B_SEED_T}\neta_si={eta_SI:.6e}\n')
         fh.write(f'no_bfield={args.no_bfield}\n')
         fh.write(f'plasma_beta={plasma_beta:.4e}\n')
-        fh.write(f'current_support_enabled={not args.no_current_support}\n')
+        # Supporting-current treatment (v12.14 Harris-static path):
+        # No external supporting current is applied. For the out-of-plane By
+        # Harris topology, the supporting current is in-plane (Jx, Jz) and
+        # develops self-consistently from particle drift via the hybrid Ohm
+        # solver (see build_Jy(): static case returns Jy=0). We record the
+        # actual physical treatment rather than any toggle.
+        fh.write(f'external_supporting_current=none\n')
+        fh.write(f'supporting_current_source=self_consistent_in_plane_drift\n')
         fh.write(f'time_step_s={time_step_s:.16e}\ntotal_time_s={total_time_s:.16e}\n')
         fh.write(f'n_steps={n_steps}\n')
         fh.write(f'\n[diagnostics]\n')

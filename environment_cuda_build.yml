@@ -11,6 +11,47 @@ name: plasma
 # runtime — pywarpx is installed into it via pip.
 #
 # Designed for: Ubuntu 22.04+ with NVIDIA GPU (driver >= 525, supports CUDA 12+)
+#
+# ----------------------------------------------------------------------------
+# VERSION HISTORY (each entry is a defect found the hard way during the
+# v1.0.0 -> v1.2.0 rebuild saga; pinning them here makes a clean rebuild work
+# in ONE pass instead of requiring live manual intervention):
+#
+# v2: added conda-pack under Build helpers. The v1 env file omitted it, which
+#     failed build_container.sh after the 60-minute WarpX compile.
+#
+# v3: added cuda-nvtx-dev. AMReX's CMake requires nvToolsExt.h; without this
+#     package the WarpX build aborts mid-compile with a missing-header error
+#     that had to be fixed by a manual `mamba install cuda-nvtx-dev` on the
+#     live box. Pinning it here prevents that.
+#
+# v4 (THIS VERSION): three coordinated changes to fix the openPMD-MPI saga.
+#     The real root cause was that WarpX, by default (WarpX_openpmd_internal
+#     =ON), fetches and STATICALLY embeds its OWN openPMD built WITHOUT MPI.
+#     The fix lives mostly in build_warpx_cuda.sh v3 (which builds an MPI
+#     openPMD from source and points WarpX at it via internal=OFF). The env
+#     file changes that SUPPORT that fix are:
+#
+#       (a) hdf5 and h5py pinned to the MPI (mpi_openmpi) build variants.
+#           openPMD with MPI requires parallel HDF5; the default nompi hdf5
+#           made openPMD's CMake configure fail with "Could NOT find HDF5:
+#           missing parallel install of HDF5".
+#
+#       (b) openpmd-api REMOVED from conda deps entirely. It is now built
+#           from source (see build_warpx_cuda.sh) because conda-forge has NO
+#           mpi_openmpi build of openpmd-api for Python 3.11 (the MPI builds
+#           stop at 0.14.5 / py39). Keeping a conda openpmd-api also created
+#           a stale-metadata trap: conda-pack packaged the nompi conda
+#           package manifest instead of our from-source MPI files. Leaving it
+#           out avoids that entirely.
+#
+#       (c) adios2 REMOVED. The env's adios2 was nompi and openPMD-MPI would
+#           require an MPI adios2 we don't have. The deck uses the HDF5
+#           backend ('h5'), not BP/ADIOS2, so openPMD is built with
+#           ADIOS2 OFF (see build script) and adios2 is not needed here.
+#
+#     openpmd-viewer is KEPT — it's pure-Python, reads HDF5 fine, and the
+#     analysis scripts use it.
 # ============================================================================
 
 channels:
@@ -19,7 +60,7 @@ channels:
 dependencies:
   - python=3.11
 
-  # ── Build toolchain ───────────────────────────────────────────────────────
+  # -- Build toolchain --------------------------------------------------------
   - cmake>=3.24
   - make
   - ninja
@@ -34,9 +75,8 @@ dependencies:
   - libgcc-ng=*
   - libstdcxx-ng=*
 
-  # ── CUDA toolkit (matches H100 driver ~13.0; we pin 12.6 which is widely supported) ──
+  # -- CUDA toolkit (matches H100 driver; we pin 12.6 which is widely supported) --
   # Note: cuda-version is a virtual package; conda picks compatible nvcc/runtime.
-  # If 12.6 is unavailable, conda can negotiate a different supported version.
   - cuda-version=12.6
   - cuda-toolkit
   - cuda-nvcc
@@ -46,26 +86,34 @@ dependencies:
   - cuda-cccl
   - cuda-libraries
   - cuda-libraries-dev
+  - cuda-nvtx-dev          # v3: AMReX needs nvToolsExt.h at compile time
   - libcurand-dev
   - libcublas-dev
   - libcusparse-dev
   - libcusolver-dev
   - libcufft-dev
 
-  # ── MPI (required by WarpX for hybrid-PIC and multi-rank runs) ────────────
+  # -- MPI (required by WarpX for hybrid-PIC and multi-rank runs) -------------
   - openmpi
   - mpi4py
+  # v5: cupy — the deck's particle-diagnostic code expects WarpX-CUDA
+  #     particle data as cupy (GPU) arrays and converts via .get(). Without
+  #     it, the analysis path segfaults after the sim completes (the run
+  #     itself is fine; only post-step GPU particle analysis crashes).
+  - cupy
 
-  # ── Numerical libraries WarpX links against ───────────────────────────────
+  # -- Numerical libraries WarpX links against --------------------------------
   - fftw
   - blaspp
   - lapackpp
   - boost
-  - hdf5
-  - adios2
-  - openpmd-api
+  # v4: HDF5 pinned to MPI variant -- required by the from-source MPI openPMD.
+  - hdf5=*=mpi_openmpi*
+  # v4: adios2 removed (was nompi; openPMD built with ADIOS2 OFF, deck uses h5)
+  # v4: openpmd-api removed -- built from source for MPI (no py311 mpi build on
+  #     conda-forge; conda pin also caused conda-pack stale-metadata trap)
 
-  # ── Python deps used by WarpX PICMI interface ─────────────────────────────
+  # -- Python deps used by WarpX PICMI interface ------------------------------
   - numpy
   - scipy
   - matplotlib
@@ -78,10 +126,11 @@ dependencies:
   - psutil
   - requests
   - jinja2
-  - h5py
-  - openpmd-viewer
+  # v4: h5py pinned to MPI variant to stay consistent with the MPI hdf5 above
+  - h5py=*=mpi_openmpi*
+  - openpmd-viewer        # pure-Python reader; analysis scripts use it (HDF5 ok)
 
-  # ── Build helpers ─────────────────────────────────────────────────────────
+  # -- Build helpers ----------------------------------------------------------
   - pip
   - python-build
   - packaging
@@ -89,8 +138,9 @@ dependencies:
   - wheel
   - virtualenv
   - picmistandard
+  - conda-pack            # v2: needed by build_container.sh
 
-  # ── Pip-installed packages ────────────────────────────────────────────────
+  # -- Pip-installed packages -------------------------------------------------
   - pip:
       - anthropic
       - annotated-types

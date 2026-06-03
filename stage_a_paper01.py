@@ -166,6 +166,121 @@ JOBS = [
      f"{LD_GEOMETRY} "
      f"--nx 512 --nz 512 --nppc 200 --substeps 160 "
      f"{DIAG_PRODUCTION}"),
+
+    # ========================================================================
+    # NPPC=100 CONVERGENCE SERIES (256² / 512² / 1024²)
+    # ========================================================================
+    # Establishes the grid-convergence asymptote noted as Section 5.6 (i)
+    # future work in v0.8.3 of the manuscript.
+    #
+    # Strategy: run the FULL series at NPPC=100 so that grid convergence is
+    # tested at fixed NPPC.  The existing NPPC=200 baselines (p1_ld_uuf and
+    # p1_ld_uuf_512 above) provide the apples-to-apples published reference
+    # at 256² and 512².  The cross-NPPC pair at 512² (NPPC=200 vs NPPC=100)
+    # then quantifies NPPC sensitivity at fixed grid as a sanity check on
+    # the NPPC reduction before extrapolating to 1024², where NPPC=200
+    # OOMs the 81 GB H100.
+    #
+    # Resulting 2x2 convergence matrix plus 256² anchor:
+    #   256² @ NPPC=200 (existing, G_FT=2.02 published)
+    #   256² @ NPPC=100 (NEW: NPPC sensitivity at fixed grid)
+    #   512² @ NPPC=200 (existing, G_FT=3.63 published)
+    #   512² @ NPPC=100 (NEW: NPPC sensitivity + grid convergence anchor)
+    #   1024² @ NPPC=100 (NEW: convergence asymptote)
+    #
+    # All three new runs use the SAME geometry, DT scaling, and ~15 ps dump
+    # cadence as their NPPC=200 counterparts — only NPPC changes.  Matched
+    # ~15 ps cadence at every resolution is critical: the earlier convergence
+    # attempt at coarser cadence (30 ps at 512², 60 ps at 1024²) undersampled
+    # the reconnection collapse window and produced artifactual t_cut values.
+    #
+    # Disk budget at NPPC=100 (peak during run, dumps deleted post-analysis):
+    #   256² ~ 300 GB
+    #   512² ~ 1.2 TB
+    #   1024² ~ 5 TB     ← drives the 8 TB volume requirement
+
+    # ---- 256² @ NPPC=100 -------------------------------------------------
+    # Same recipe as p1_ld_uuf (above): --test flag, max_steps=1500,
+    # dump_period=20, ~1.16 ns total at ~15 ps cadence.  Only NPPC changes.
+    # Expected runtime: ~50 min
+    ("p1_ld_uuf_n100", "0", 20, 1500, "v15",
+     f"--test {LD_GEOMETRY} "
+     f"--nppc 100 "
+     f"{DIAG_PRODUCTION}"),
+
+    # ---- 512² @ NPPC=100 -------------------------------------------------
+    # Same recipe as p1_ld_uuf_512 (above): no --test, substeps=160,
+    # max_steps=7700, dump_period=100, ~1.16 ns total at ~15 ps cadence.
+    # Only NPPC changes (200 -> 100).
+    # Expected runtime: ~3.5-4 hours
+    ("p1_ld_uuf_512_n100", "0", 100, 7700, "v15",
+     f"{LD_GEOMETRY} "
+     f"--nx 512 --nz 512 --nppc 100 --substeps 160 "
+     f"{DIAG_PRODUCTION}"),
+
+    # ---- 1024² @ NPPC=100 (convergence asymptote) ------------------------
+    # NPPC=100 (not 200) because 1024² @ NPPC=200 OOMs the 81 GB H100.
+    # substeps=320 maintains CFL at 1024² (cell size halves vs 512², so
+    # dt must halve; substeps doubles to compensate).  Production DT at
+    # 1024² resolves empirically to ~0.075 ps/step.
+    #
+    # max_steps=15400 covers 15400 x 0.075 = 1155 ps, matching the 256²
+    # and 512² windows apples-to-apples.  dump_period=200 -> ~77 dumps at
+    # ~15 ps cadence, again matching the other resolutions.
+    #
+    # DISK: ~5 TB peak required at 77 dumps x 1024² x NPPC=100 (each
+    # particle dump ~65 GB).  This is why an 8 TB /mnt/vdc volume is
+    # required for this run; the previous 4 TB volume was insufficient.
+    #
+    # Expected runtime: ~10-14 hours (sim ~5 hr at ~50 steps/min + ~7 hr analysis)
+    ("p1_ld_uuf_1024_n100", "0", 200, 15400, "v15",
+     f"{LD_GEOMETRY} "
+     f"--nx 1024 --nz 1024 --nppc 100 --substeps 320 "
+     f"{DIAG_PRODUCTION}"),
+]
+
+# ============================================================================
+# Sensitivity sweep (symmetry-perturbation referee response)
+# ============================================================================
+# Separate stage (--stage sensitivity). 12 runs at the SAME 256^2 LD operating
+# point as p1_ld_uuf, each identical except for a per-spot --spot-spec
+# perturbation that relaxes the imposed 8-fold symmetry along three axes
+# (energy imbalance / position jitter / beams on-off). Answers Bonasera's
+# "are you assuming some symmetry?" ahead of submission.
+#
+# Requirements on the cloud before launching this stage:
+#   - patched simulation/pb11_ring_reconnection_v15_pulsed.py (adds --spot-spec)
+#   - specs/<name>.json  for every non-baseline run, at ~/laser-plasma-research/specs/
+#
+# s01_baseline carries NO --spot-spec -> byte-identical to p1_ld_uuf. It is run
+# FRESH here (not reused) because the centroid metric needs its ~30 ps particle
+# dump as the n=0 reference, and p1_ld_uuf's particles were long since cleaned.
+# Particles are KEPT on the cloud for all 12 (KEEP_PARTICLES), so the centroid
+# can be computed cloud-side across the whole set. ~50 min/run, ~10 hr total.
+_SENS_BASE = f"--test {LD_GEOMETRY} {DIAG_PRODUCTION}"
+
+# (sub_tag, spec_path_or_None) — sub_tags MUST match the spec filenames and the
+# names in run_manifest.csv that analyze_sensitivity.py reads.
+_SENS_SPECS = [
+    ("s01_baseline",          None),
+    ("s00_baseline_specform", "specs/s00_baseline_specform.json"),
+    ("s_energy_05pct",        "specs/s_energy_05pct.json"),
+    ("s_energy_10pct",        "specs/s_energy_10pct.json"),
+    ("s_energy_20pct",        "specs/s_energy_20pct.json"),
+    ("s_jitter_050um",        "specs/s_jitter_050um.json"),
+    ("s_jitter_150um",        "specs/s_jitter_150um.json"),
+    ("s_jitter_300um",        "specs/s_jitter_300um.json"),
+    ("s_drop1_4plus3",        "specs/s_drop1_4plus3.json"),
+    ("s_drop2_adjacent",      "specs/s_drop2_adjacent.json"),
+    ("s_drop2_opposite",      "specs/s_drop2_opposite.json"),
+    ("s_combined_realistic",  "specs/s_combined_realistic.json"),
+]
+
+# Same tuple format as JOBS: (sub_tag, freq_hz, dump_period, max_steps, script_id, custom_flags)
+SENSITIVITY_JOBS = [
+    (tag, "0", 20, 1500, "v15",
+     _SENS_BASE if spec is None else f"{_SENS_BASE} --spot-spec {spec}")
+    for tag, spec in _SENS_SPECS
 ]
 
 POLL_INTERVAL_SEC = 60
@@ -179,6 +294,11 @@ DEFAULT_MAX_RETRIES = 3
 RETRY_BACKOFF_SEC = [30, 120, 300]
 
 TRANSIENT_RCS = {124, 255}
+
+# Set True by --stage sensitivity. When True, clean_pre_attempt() will NOT
+# reclaim OTHER runs' particle dumps, so the whole sensitivity set's particles
+# persist on the cloud (4 TB drive) for cross-run centroid analysis afterward.
+KEEP_PARTICLES = False
 
 
 # ============================================================================
@@ -288,7 +408,11 @@ def clean_pre_attempt(sub_tag: str) -> None:
     # Free disk from OTHER completed runs (keeps the just-finished one's
     # particles available until the NEXT job starts, enabling post-hoc
     # analysis like f(E) histogram extraction).
-    clean_other_runs_particles(sub_tag)
+    if KEEP_PARTICLES:
+        log("KEEP_PARTICLES set - preserving other runs' particle dumps for "
+            "cross-run analysis", "  ")
+    else:
+        clean_other_runs_particles(sub_tag)
 
     local_dir = LOCAL_PAPER_DIR / sub_tag
     if local_dir.exists():
@@ -623,18 +747,32 @@ def main() -> int:
     p.add_argument("--abort-on-failure", action="store_true",
                    help="Abort remaining jobs after first failure (legacy behavior). "
                         "Default is to continue past failures.")
+    p.add_argument("--stage", choices=["paper1", "sensitivity"], default="paper1",
+                   help="Which campaign to run. 'paper1' (default) runs the two "
+                        "baseline/convergence jobs. 'sensitivity' runs the 12 "
+                        "symmetry-perturbation jobs and KEEPS all particle dumps "
+                        "on the cloud for cross-run centroid analysis.")
     args = p.parse_args()
 
-    jobs = JOBS
+    global KEEP_PARTICLES
+    if args.stage == "sensitivity":
+        KEEP_PARTICLES = True
+        all_jobs = SENSITIVITY_JOBS
+        stage_name = "Paper 1 SENSITIVITY runner"
+    else:
+        all_jobs = JOBS
+        stage_name = "Paper 1 runner"
+
+    jobs = all_jobs
     if args.jobs:
         wanted = set(args.jobs.split(","))
-        jobs = [j for j in JOBS if j[0] in wanted]
+        jobs = [j for j in all_jobs if j[0] in wanted]
         if not jobs:
             print(f"No matching jobs in {args.jobs}. "
-                  f"Available: {[j[0] for j in JOBS]}")
+                  f"Available: {[j[0] for j in all_jobs]}")
             return 1
 
-    banner(f"Paper 1 runner - {len(jobs)} jobs: {', '.join(j[0] for j in jobs)} "
+    banner(f"{stage_name} - {len(jobs)} jobs: {', '.join(j[0] for j in jobs)} "
            f"(max_retries={args.max_retries})")
 
     succeeded, failed = [], []
@@ -651,16 +789,30 @@ def main() -> int:
     print(f"  Succeeded: {len(succeeded)} - {succeeded}", flush=True)
     print(f"  Failed:    {len(failed)} - {failed}", flush=True)
     if not failed:
-        print(f"\n  Next step: review the post_analysis_report.txt and "
-              f"first_transit_summary_p11b.txt files in each run directory.", flush=True)
-        print(f"  Local runs: {LOCAL_PAPER_DIR}", flush=True)
-        print(f"  These provide the data for Paper 1's three contributions:", flush=True)
-        print(f"    (1) Geometry of reconnection (zones_paper3.txt, "
-              f"reconnection_summary.txt)", flush=True)
-        print(f"    (2) Fusion yield/gain via sigma-weighted first-transit "
-              f"(first_transit_summary_p11b.txt)", flush=True)
-        print(f"    (3) Comparison with current approaches (literature, "
-              f"no extra data needed)\n", flush=True)
+        if args.stage == "sensitivity":
+            print(f"\n  All sensitivity runs complete. Particles are KEPT on the "
+                  f"cloud for cross-run analysis.", flush=True)
+            print(f"  Next: run the cross-run analyzer ON THE CLOUD (that is where "
+                  f"the particle dumps live):", flush=True)
+            print(f"    ssh {CLOUD_HOST} '{CONDA_INIT} && cd {CLOUD_ROOT} && \\", flush=True)
+            print(f"      python analysis_scripts/analyze_sensitivity.py \\", flush=True)
+            print(f"        --runs-root runs --manifest specs/run_manifest.csv \\", flush=True)
+            print(f"        --baseline s01_baseline --out runs/sensitivity_results.csv'", flush=True)
+            print(f"  Then bring just the small CSV down:", flush=True)
+            print(f"    scp {CLOUD_HOST}:{CLOUD_ROOT}/runs/sensitivity_results.csv .", flush=True)
+            print(f"  Sanity check first: s01_baseline must reproduce G_FT 2.02 / "
+                  f"Maxwellian 0.82 / |B|min 21.46 T.\n", flush=True)
+        else:
+            print(f"\n  Next step: review the post_analysis_report.txt and "
+                  f"first_transit_summary_p11b.txt files in each run directory.", flush=True)
+            print(f"  Local runs: {LOCAL_PAPER_DIR}", flush=True)
+            print(f"  These provide the data for Paper 1's three contributions:", flush=True)
+            print(f"    (1) Geometry of reconnection (zones_paper3.txt, "
+                  f"reconnection_summary.txt)", flush=True)
+            print(f"    (2) Fusion yield/gain via sigma-weighted first-transit "
+                  f"(first_transit_summary_p11b.txt)", flush=True)
+            print(f"    (3) Comparison with current approaches (literature, "
+                  f"no extra data needed)\n", flush=True)
     return 0 if not failed else 1
 
 

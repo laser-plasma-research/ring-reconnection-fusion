@@ -1,0 +1,53 @@
+{
+  "comment": "combined realistic: energy +/-5% split + 50 um jitter",
+  "spots": [
+    {
+      "enabled": true,
+      "amp_scale": 1.05,
+      "dx_um": -19.14186117019821,
+      "dz_um": -31.899378696460698
+    },
+    {
+      "enabled": true,
+      "amp_scale": 1.05,
+      "dx_um": -9.679039169227472,
+      "dz_um": 48.0967627291745
+    },
+    {
+      "enabled": true,
+      "amp_scale": 1.05,
+      "dx_um": 3.0040943589487474,
+      "dz_um": -19.096104415398937
+    },
+    {
+      "enabled": true,
+      "amp_scale": 1.05,
+      "dx_um": -8.169249965412305,
+      "dz_um": 29.818447695897053
+    },
+    {
+      "enabled": true,
+      "amp_scale": 0.95,
+      "dx_um": -46.13292316300372,
+      "dz_um": -16.214055100205304
+    },
+    {
+      "enabled": true,
+      "amp_scale": 0.95,
+      "dx_um": 40.182720025434506,
+      "dz_um": -12.145641638308811
+    },
+    {
+      "enabled": true,
+      "amp_scale": 0.95,
+      "dx_um": -17.90751430766874,
+      "dz_um": 44.784028531972375
+    },
+    {
+      "enabled": true,
+      "amp_scale": 0.95,
+      "dx_um": -15.68123599847429,
+      "dz_um": 25.96043678629166
+    }
+  ]
+}

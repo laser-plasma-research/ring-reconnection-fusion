@@ -13,7 +13,7 @@ For polite usage, Crossref recommends including a User-Agent with a contact
 email, which gives priority routing on their "polite" pool.
 
 Usage:
-    client = CrossrefClient(contact_email='bworth@substrate.ai')
+    client = CrossrefClient(contact_email='brenworth@gmail.com')
     metadata = client.fetch_metadata('10.1063/1.870962')   # Rider 1995
     print(metadata['title'])
     bibtex = client.to_bibtex(metadata, key='rider1995')

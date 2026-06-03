@@ -30,7 +30,7 @@ Edits applied (and only these edits — physics and diagnostics are unchanged):
 Usage:
     python make_3d_pilot.py
     # Then on the GPU:
-    ssh substrate-gpu 'cd ~/laser-plasma-research && \\
+    ssh gpu-node 'cd ~/laser-plasma-research && \\
         python pb11_ring_3d_pilot_v1.py --max-steps 1340 --dump-period 50 \\
             --diag-profile custom --early-diag-period 10 --early-diag-steps 200 \\
             --late-diag-period 50 --no-rotating'
@@ -297,7 +297,7 @@ print(f'  NY = args.ny present:    {"NY   = args.ny" in patched}')
 print(f'  3D field helper present: {"if arr.ndim == 3" in patched}')
 print(f'  3D metadata present:     {"dimensionality=3D" in patched}')
 print()
-print('Next step: copy pb11_ring_3d_pilot_v1.py to substrate-gpu and test.')
+print('Next step: copy pb11_ring_3d_pilot_v1.py to gpu-node and test.')
 print('Suggested first run (sanity check, ~2 hr wall):')
 print('  python pb11_ring_3d_pilot_v1.py --nx 64 --nz 64 --ny 16 \\')
 print('         --max-steps 333 --dump-period 50 \\')
